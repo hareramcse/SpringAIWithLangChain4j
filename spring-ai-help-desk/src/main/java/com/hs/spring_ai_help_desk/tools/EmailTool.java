@@ -1,10 +1,12 @@
 package com.hs.spring_ai_help_desk.tools;
 
-import dev.langchain4j.agent.tool.P;
-import dev.langchain4j.agent.tool.Tool;
-
 import org.springframework.stereotype.Component;
 
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Component
 public class EmailTool {
 
@@ -12,9 +14,7 @@ public class EmailTool {
 	public String sendEmailToSupportTeam(
 			@P("Email id is associated with ticket for contact information.") String email,
 			@P("Short description of ticket summary.") String message) {
-		System.out.println("going to send email to support team");
-		System.out.println("email id : " + email);
-		System.out.println("message : " + message);
+		log.info("Sending email to support team - email: {}, message: {}", email, message);
 		return "Email sent to support team for " + email;
 	}
 

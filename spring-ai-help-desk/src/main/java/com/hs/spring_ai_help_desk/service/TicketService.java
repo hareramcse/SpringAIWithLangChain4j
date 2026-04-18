@@ -1,22 +1,20 @@
 package com.hs.spring_ai_help_desk.service;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import java.util.UUID;
+
 import org.springframework.stereotype.Service;
 
 import com.hs.spring_ai_help_desk.entity.Ticket;
 import com.hs.spring_ai_help_desk.repository.TicketRepository;
 
 import jakarta.transaction.Transactional;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.RequiredArgsConstructor;
 
 @Service
-@Getter
-@Setter
+@RequiredArgsConstructor
 public class TicketService {
 
-	@Autowired
-	private TicketRepository ticketRepository;
+	private final TicketRepository ticketRepository;
 
 	@Transactional
 	public Ticket createTicket(Ticket ticket) {
@@ -29,12 +27,12 @@ public class TicketService {
 		return ticketRepository.save(ticket);
 	}
 
-	public Ticket getTicket(Long ticketId) {
+	public Ticket getTicket(UUID ticketId) {
 		return ticketRepository.findById(ticketId).orElse(null);
 	}
 
-	public Ticket getTicketByEmailId(String username) {
-		return ticketRepository.findByEmail(username).orElse(null);
+	public Ticket getTicketByEmailId(String email) {
+		return ticketRepository.findByEmail(email).orElse(null);
 	}
 
 }
