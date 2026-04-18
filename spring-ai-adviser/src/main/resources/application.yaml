@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: spring-ai-adviser
+
+app:
+  safeguard:
+    blocked-words: games,gambling,violence
+
+langchain4j:
+  open-ai:
+    chat-model:
+      api-key: ${OPENAI_API_KEY}
+      model-name: gpt-4o-mini
+      temperature: 0.0
+      max-tokens: 150
+      log-requests: true
+      log-responses: true
+    streaming-chat-model:
+      api-key: ${OPENAI_API_KEY}
+      model-name: gpt-4o-mini
+      temperature: 0.0
+      max-tokens: 150

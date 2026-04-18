@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: spring-ai-tool
+
+langchain4j:
+  open-ai:
+    chat-model:
+      api-key: ${OPENAI_API_KEY}
+      model-name: gpt-4o-mini
+      temperature: 0.0
+      max-tokens: 150
+      log-requests: true
+      log-responses: true
+
+app:
+  weather:
+    api-key: ${WEATHER_API_KEY}

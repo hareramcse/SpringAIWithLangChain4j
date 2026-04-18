@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: spring-ai-media
+
+app:
+  openai:
+    api-key: ${OPENAI_API_KEY}
+
+langchain4j:
+  open-ai:
+    chat-model:
+      api-key: ${OPENAI_API_KEY}
+      model-name: gpt-4o-mini
+      temperature: 0.0
+      max-tokens: 150

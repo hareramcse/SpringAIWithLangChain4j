@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: spring-ai-chat-memory
+  datasource:
+    url: jdbc:postgresql://localhost:5432/postgres
+    username: postgres
+    password: password
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+app:
+  chat-memory:
+    max-messages: 10
+
+langchain4j:
+  open-ai:
+    chat-model:
+      api-key: ${OPENAI_API_KEY}
+      model-name: gpt-4o-mini
+      temperature: 0.0
+      max-tokens: 150
+      log-requests: true
+      log-responses: true
+    streaming-chat-model:
+      api-key: ${OPENAI_API_KEY}
+      model-name: gpt-4o-mini
+      temperature: 0.0
+      max-tokens: 150
