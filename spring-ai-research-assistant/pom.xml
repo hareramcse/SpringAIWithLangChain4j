@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>4.0.4</version>
+		<relativePath />
+	</parent>
+
+	<groupId>com.hs</groupId>
+	<artifactId>spring-ai-research-assistant</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<packaging>pom</packaging>
+	<name>spring-ai-research-assistant</name>
+	<description>Multi-module teaching application: multi-agent AI, RAG, evaluation, safety, workflow</description>
+
+	<modules>
+		<module>research-common</module>
+		<module>research-rag</module>
+		<module>research-agents</module>
+		<module>research-safety</module>
+		<module>research-eval</module>
+		<module>research-infra</module>
+		<module>research-workflow</module>
+		<module>research-app</module>
+	</modules>
+
+	<properties>
+		<java.version>21</java.version>
+		<langchain4j.version>1.13.0-beta23</langchain4j.version>
+		<!-- Spring Boot 4 requires SpringDoc v3 -->
+		<springdoc-openapi.version>3.0.0</springdoc-openapi.version>
+	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<!-- Internal modules -->
+			<dependency>
+				<groupId>com.hs</groupId>
+				<artifactId>research-common</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.hs</groupId>
+				<artifactId>research-rag</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.hs</groupId>
+				<artifactId>research-agents</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.hs</groupId>
+				<artifactId>research-safety</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.hs</groupId>
+				<artifactId>research-eval</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.hs</groupId>
+				<artifactId>research-infra</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.hs</groupId>
+				<artifactId>research-workflow</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<!-- LangChain4j (BOM-style version alignment) -->
+			<dependency>
+				<groupId>dev.langchain4j</groupId>
+				<artifactId>langchain4j-open-ai-spring-boot4-starter</artifactId>
+				<version>${langchain4j.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>dev.langchain4j</groupId>
+				<artifactId>langchain4j-spring-boot4-starter</artifactId>
+				<version>${langchain4j.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>dev.langchain4j</groupId>
+				<artifactId>langchain4j-reactor</artifactId>
+				<version>${langchain4j.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>dev.langchain4j</groupId>
+				<artifactId>langchain4j-pgvector</artifactId>
+				<version>${langchain4j.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>dev.langchain4j</groupId>
+				<artifactId>langchain4j-document-parser-apache-tika</artifactId>
+				<version>${langchain4j.version}</version>
+			</dependency>
+			<!-- Main library (includes document splitters; use 1.13.0 release, not -beta) -->
+			<dependency>
+				<groupId>dev.langchain4j</groupId>
+				<artifactId>langchain4j</artifactId>
+				<version>1.13.0</version>
+			</dependency>
+			<!-- OpenAPI 3 + Swagger UI -->
+			<dependency>
+				<groupId>org.springdoc</groupId>
+				<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+				<version>${springdoc-openapi.version}</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<build>
+		<pluginManagement>
+			<plugins>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-compiler-plugin</artifactId>
+					<configuration>
+						<annotationProcessorPaths>
+							<path>
+								<groupId>org.projectlombok</groupId>
+								<artifactId>lombok</artifactId>
+							</path>
+						</annotationProcessorPaths>
+					</configuration>
+				</plugin>
+			</plugins>
+		</pluginManagement>
+	</build>
+</project>

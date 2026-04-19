@@ -1,0 +1,31 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/postgres
+    username: postgres
+    password: password
+  jpa:
+    show-sql: true
+
+langchain4j:
+  open-ai:
+    chat-model:
+      log-requests: true
+      log-responses: true
+
+app:
+  pgvector:
+    host: localhost
+    port: 5432
+    database: postgres
+    user: postgres
+    password: password
+
+management:
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.hs.spring_ai_help_desk: DEBUG
+    dev.langchain4j: DEBUG

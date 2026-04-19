@@ -37,6 +37,9 @@ public class Ticket implements Serializable {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	private UUID id;
 
+	@Column(unique = true, updatable = false)
+	private String referenceNumber;
+
 	@Column(length = 500)
 	private String summary;
 
@@ -48,7 +51,7 @@ public class Ticket implements Serializable {
 	@Column(length = 1000)
 	private String description;
 
-	@Column(unique = true)
+	@Column
 	private String email;
 
 	private LocalDateTime createdOn;

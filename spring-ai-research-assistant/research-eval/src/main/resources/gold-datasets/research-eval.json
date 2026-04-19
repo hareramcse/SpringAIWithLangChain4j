@@ -1,0 +1,50 @@
+[
+  {
+    "query": "What is Retrieval Augmented Generation and what are its main stages?",
+    "expectedAnswer": "RAG is a technique that enhances LLM responses by retrieving relevant information from external knowledge sources. It has three stages: Indexing (documents split into chunks, embedded, stored in vector DB), Retrieval (query embedded and similar chunks found), and Generation (retrieved chunks used as context for the LLM).",
+    "context": "RAG was introduced by Lewis et al. in 2020. The pipeline consists of indexing, retrieval, and generation stages.",
+    "tags": ["rag", "fundamentals"]
+  },
+  {
+    "query": "What are the advantages of RAG over fine-tuning?",
+    "expectedAnswer": "RAG advantages include: no model retraining required, reduced hallucination by grounding in retrieved documents, source attribution for answers, and cost-effectiveness since no GPU compute is needed for training.",
+    "context": "Key advantages of RAG over fine-tuning: no retraining, reduced hallucination, source attribution, cost-effective.",
+    "tags": ["rag", "comparison"]
+  },
+  {
+    "query": "Explain the Chain-of-Thought prompting technique",
+    "expectedAnswer": "Chain-of-Thought (CoT) prompting, introduced by Wei et al. in 2022, asks the model to think step by step before giving a final answer. This significantly improves performance on reasoning tasks by making the model's reasoning process explicit.",
+    "context": "CoT prompting asks the model to think step by step. Introduced by Wei et al. 2022. Improves performance on reasoning tasks.",
+    "tags": ["prompting", "techniques"]
+  },
+  {
+    "query": "What is the Supervisor pattern in multi-agent AI systems?",
+    "expectedAnswer": "The Supervisor pattern has a supervisor agent receive user requests, decide which sub-agents to delegate to, coordinate their execution, synthesize results, and iterate if quality is insufficient.",
+    "context": "A supervisor agent receives the request, delegates to sub-agents, sub-agents execute and report back, supervisor synthesizes and may iterate.",
+    "tags": ["agents", "architecture"]
+  },
+  {
+    "query": "What vector databases are commonly used and what are their trade-offs?",
+    "expectedAnswer": "Common vector databases include PostgreSQL+pgvector (open-source, integrates with existing Postgres), Pinecone (fully managed, serverless), Weaviate (supports hybrid search), Chroma (lightweight, great for prototyping), and Milvus (high-performance, distributed, handles billions of vectors).",
+    "context": "PostgreSQL+pgvector, Pinecone, Weaviate, Chroma, Milvus are popular vector databases with different trade-offs.",
+    "tags": ["vector-db", "infrastructure"]
+  },
+  {
+    "query": "How does semantic caching work and what are its benefits?",
+    "expectedAnswer": "Semantic caching embeds queries and finds similar past queries instead of exact-match caching. If similarity exceeds a threshold (typically 0.95), the cached response is returned. This reduces API costs by 30-60% for applications with repetitive queries.",
+    "context": "Semantic caching embeds queries, finds similar past queries. Threshold typically 0.95. Reduces costs by 30-60%.",
+    "tags": ["caching", "optimization"]
+  },
+  {
+    "query": "What are the common prompt injection attack types and defenses?",
+    "expectedAnswer": "Prompt injection types include direct injection (asking to ignore instructions) and indirect injection (malicious instructions in retrieved documents). Defenses include pattern-based detection, LLM-based classification, input/output sandboxing, and prompt firewalls.",
+    "context": "Direct injection and indirect injection are common. Defenses: pattern detection, LLM classification, sandboxing, prompt firewalls.",
+    "tags": ["security", "guardrails"]
+  },
+  {
+    "query": "What is the ReAct pattern and how does it work?",
+    "expectedAnswer": "ReAct (Reason + Act) combines reasoning with action-taking in an interleaved loop: the model reasons about what to do (Thought), takes an action like search or calculate (Action), then observes the result (Observation). This pattern is fundamental to AI agent architectures.",
+    "context": "ReAct combines reasoning with actions in a loop: Thought, Action, Observation. Fundamental to agent architectures.",
+    "tags": ["agents", "prompting"]
+  }
+]

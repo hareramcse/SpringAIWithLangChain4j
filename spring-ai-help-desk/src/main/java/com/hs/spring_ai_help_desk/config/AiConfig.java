@@ -7,7 +7,6 @@ import org.springframework.context.annotation.Configuration;
 
 import dev.langchain4j.memory.chat.ChatMemoryProvider;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
-import dev.langchain4j.store.memory.chat.ChatMemoryStore;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -16,7 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 public class AiConfig {
 
 	@Bean
-	public ChatMemoryProvider chatMemoryProvider(ChatMemoryStore chatMemoryStore) {
+	public ChatMemoryProvider chatMemoryProvider(JdbcChatMemoryStore chatMemoryStore) {
 		log.info("ChatMemoryStore bean created. {}", chatMemoryStore.getClass().getName());
 		return memoryId -> MessageWindowChatMemory.builder()
 				.id(memoryId)
@@ -26,7 +25,7 @@ public class AiConfig {
 	}
 
 	@Bean
-	public ChatMemoryStore chatMemoryStore(DataSource dataSource) {
+	public JdbcChatMemoryStore chatMemoryStore(DataSource dataSource) {
 		return new JdbcChatMemoryStore(dataSource);
 	}
 

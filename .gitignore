@@ -1,0 +1,87 @@
+# --- Build output (Maven / Gradle) ---
+**/target/
+**/build/
+out/
+dependency-reduced-pom.xml
+.flattened-pom.xml
+*.war
+*.ear
+*.nar
+
+# Maven release / flatten temp files
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.next
+release.properties
+
+# Allow nested resource folders named "target" inside src (rare edge case)
+!**/src/**/target/
+
+# Wrapper JAR is often committed; uncomment if you fetch wrapper via CI only
+# .mvn/wrapper/maven-wrapper.jar
+
+# --- IDE: Eclipse / STS / Spring Tools ---
+.apt_generated/
+.classpath
+.factorypath
+.project
+.settings/
+.metadata/
+.recommenders/
+*.launch
+.springBeans
+.sts4-cache
+bin/
+
+# --- IDE: IntelliJ IDEA ---
+.idea/
+*.iml
+*.ipr
+*.iws
+*.eml
+
+# --- IDE: NetBeans ---
+/nbproject/private/
+/nbbuild/
+/nbdist/
+/.nb-gradle/
+
+# --- IDE: VS Code / Cursor (local only — use Eclipse for debug) ---
+.vscode/
+.cursor/
+
+# --- OS & editors ---
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# --- Logs & diagnostics ---
+*.log
+logs/
+hs_err_pid*.log
+replay_pid*.pid
+
+# --- Spring Boot initializr noise (regenerate if needed) ---
+HELP.md
+
+# --- Security / env (never commit secrets) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+
+# --- Test / coverage output (outside target in some setups) ---
+**/surefire-reports/
+**/failsafe-reports/
+**/site/
+.jacoco/
+
+# --- Misc ---
+*.orig
+*.rej

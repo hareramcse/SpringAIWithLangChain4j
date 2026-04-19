@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+langchain4j:
+  open-ai:
+    chat-model:
+      log-requests: false
+      log-responses: false
+
+management:
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    com.hs.spring_ai_help_desk: INFO
+    dev.langchain4j: WARN

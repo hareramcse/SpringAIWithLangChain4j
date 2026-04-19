@@ -10,12 +10,12 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 public class EmailTool {
 
-	@Tool("This tool helps to send email to support team once the ticket is created.")
+	@Tool("Send an email notification to the support team after a ticket is created or escalated.")
 	public String sendEmailToSupportTeam(
-			@P("Email id is associated with ticket for contact information.") String email,
-			@P("Short description of ticket summary.") String message) {
+			@P("Email address associated with the ticket") String email,
+			@P("Short description of the ticket or escalation reason") String message) {
 		log.info("Sending email to support team - email: {}, message: {}", email, message);
-		return "Email sent to support team for " + email;
+		return "Email notification sent to the support team regarding " + email + ". Message: " + message;
 	}
 
 }

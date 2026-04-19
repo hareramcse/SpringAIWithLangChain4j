@@ -1,0 +1,59 @@
+Software Troubleshooting Guide — Random Technologies
+
+Email Client Not Syncing (Outlook / Thunderbird)
+- Check internet connectivity by opening a web browser.
+- Verify email account credentials are correct (Settings > Account > Re-enter password).
+- Check if the mail server is reachable: ping mail.randomtechnologies.com.
+- Disable and re-enable the email account.
+- Clear the local cache: File > Account Settings > Data Files > Clear Cache.
+- If using Outlook, run the Inbox Repair Tool (scanpst.exe).
+- Ensure the email server ports are not blocked by firewall (IMAP: 993, SMTP: 587).
+
+VPN Connection Failed
+- Verify your internet connection is working.
+- Ensure VPN credentials are correct and not expired.
+- Try disconnecting and reconnecting the VPN.
+- Restart the VPN client application.
+- Check if your VPN subscription or license is active.
+- Disable any other VPN or proxy software that may conflict.
+- If connecting from a public network, try switching to a mobile hotspot.
+- Contact IT if the VPN server certificate has expired.
+
+Application Crashing on Startup
+- Restart the computer and try again.
+- Check for application updates and install them.
+- Run the application as Administrator (right-click > Run as administrator).
+- Clear the application cache (usually in AppData/Local or AppData/Roaming).
+- Check the Windows Event Viewer (eventvwr.msc) for error details.
+- Uninstall and reinstall the application.
+- Ensure system requirements are met (check RAM, disk space, OS version).
+- If a specific DLL error appears, install the latest Visual C++ Redistributable.
+
+Cannot Access Internal Website / Portal
+- Check if you are connected to the company network or VPN.
+- Try clearing the browser cache and cookies.
+- Try accessing the site in Incognito/Private browsing mode.
+- Flush DNS cache: open Command Prompt and run "ipconfig /flushdns".
+- Try a different browser (Chrome, Firefox, Edge).
+- Check if the site is accessible from another computer.
+- If the error is 403 Forbidden, your account may lack permissions. Contact your manager or IT admin.
+- If the error is 502 or 503, the server may be down. Check the IT status page.
+
+Slow Internet Connection
+- Run a speed test at speedtest.net to measure current bandwidth.
+- Restart the router/modem by unplugging for 30 seconds.
+- Move closer to the Wi-Fi router or connect via ethernet cable.
+- Disconnect other devices that may be consuming bandwidth.
+- Clear browser cache and disable bandwidth-heavy browser extensions.
+- Check if a large download or backup is running in the background.
+- If on company network, check the IT status page for known network issues.
+- Contact IT if speeds are consistently below 10 Mbps on wired connection.
+
+Windows Update Failing
+- Run the Windows Update Troubleshooter: Settings > Update > Troubleshoot.
+- Ensure at least 20GB of free disk space is available.
+- Restart the Windows Update service: Services > Windows Update > Restart.
+- Clear the Windows Update cache: delete contents of C:\Windows\SoftwareDistribution\Download.
+- Try installing updates manually from the Microsoft Update Catalog.
+- If the error code is 0x80070002 or 0x80070003, reset Windows Update components.
+- Escalate to IT if updates fail after multiple attempts.

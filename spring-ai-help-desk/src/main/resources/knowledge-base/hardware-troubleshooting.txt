@@ -1,0 +1,52 @@
+Hardware Troubleshooting Guide — Random Technologies
+
+Monitor Not Turning On
+- Check if the power cable is securely connected to both the monitor and the power outlet.
+- Try a different power outlet to rule out outlet failure.
+- Press and hold the monitor power button for 10 seconds to perform a hard reset.
+- If the monitor has indicator lights but no display, check the video cable (HDMI/DisplayPort/VGA) connection.
+- Try connecting to a different video port on the computer.
+- Test with a known working monitor to rule out GPU failure.
+- If none of the above works, the monitor may have a hardware defect. Escalate to hardware team for replacement.
+
+Keyboard Not Working
+- Unplug the keyboard and plug it back in.
+- Try a different USB port.
+- For wireless keyboards, check if batteries need replacement and re-pair the device.
+- Test with another keyboard to isolate if the issue is the keyboard or the USB port.
+- Check Device Manager (Windows) or System Preferences (Mac) for driver issues.
+- If the keyboard works in BIOS but not in the OS, reinstall keyboard drivers.
+
+Mouse Not Responding
+- Unplug and reconnect the mouse.
+- Try a different USB port.
+- For wireless mice, replace batteries and re-pair the device.
+- Clean the mouse sensor with compressed air.
+- Check if mouse drivers are up to date in Device Manager.
+- Test with another mouse on the same port.
+
+Laptop Not Charging
+- Verify the charger is plugged into a working outlet.
+- Inspect the charging cable for visible damage or fraying.
+- Try a different compatible charger if available.
+- Remove the battery (if removable) and hold the power button for 30 seconds, then reinsert.
+- Check the charging port for debris or damage.
+- If the laptop charges intermittently, the charging port may need repair. Escalate to hardware team.
+
+Computer Running Slowly
+- Restart the computer to clear temporary files and processes.
+- Check Task Manager (Ctrl+Shift+Esc) for processes using high CPU or memory.
+- Run disk cleanup to free up storage space.
+- Ensure at least 10% of disk space is free.
+- Check for malware by running a full antivirus scan.
+- Disable unnecessary startup programs.
+- If the issue persists, consider upgrading RAM or switching to an SSD. Escalate to IT for hardware upgrade.
+
+Printer Not Printing
+- Verify the printer is powered on and connected (USB or network).
+- Check for paper jams and clear them.
+- Ensure the printer has sufficient ink/toner and paper.
+- Delete all pending print jobs from the print queue.
+- Restart the print spooler service: Services > Print Spooler > Restart.
+- Remove and re-add the printer in Settings > Printers & Scanners.
+- Update or reinstall printer drivers from the manufacturer's website.

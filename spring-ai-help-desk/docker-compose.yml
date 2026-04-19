@@ -1,6 +1,6 @@
 services:
     postgres:
-        image: postgres:17.6
+        image: pgvector/pgvector:pg17
         container_name: postgres
         ports:
             - "5432:5432"
@@ -9,3 +9,8 @@ services:
             - POSTGRES_PASSWORD=password
             - POSTGRES_USER=postgres
             - POSTGRES_DB=postgres
+        volumes:
+            - pgdata:/var/lib/postgresql/data
+
+volumes:
+    pgdata:

@@ -2,16 +2,20 @@ spring:
   application:
     name: "spring-ai-help-desk"
   datasource:
-    url: jdbc:postgresql://localhost:5432/postgres
-    username: postgres
-    password: password
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/postgres}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:password}
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
 
 langchain4j:
   open-ai:
@@ -19,11 +23,43 @@ langchain4j:
       api-key: ${OPENAI_API_KEY}
       model-name: gpt-4o-mini
       temperature: 0.0
-      max-tokens: 300
-      log-requests: true
-      log-responses: true
+      max-tokens: 1500
+      log-requests: false
+      log-responses: false
     streaming-chat-model:
       api-key: ${OPENAI_API_KEY}
       model-name: gpt-4o-mini
       temperature: 0.0
-      max-tokens: 300
+      max-tokens: 1500
+    embedding-model:
+      api-key: ${OPENAI_API_KEY}
+      model-name: text-embedding-3-small
+      dimensions: 512
+
+app:
+  pgvector:
+    host: ${DB_HOST:localhost}
+    port: ${DB_PORT:5432}
+    database: ${DB_NAME:postgres}
+    user: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:password}
+    table: helpdesk_embeddings
+    dimension: 512
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: Spring AI Help Desk
+    description: AI-powered Help Desk Assistant with RAG using LangChain4j and Spring Boot
+    version: 0.0.1-SNAPSHOT

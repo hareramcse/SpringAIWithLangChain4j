@@ -1,0 +1,16 @@
+services:
+    postgres-research:
+        image: pgvector/pgvector:pg17
+        container_name: postgres-research
+        ports:
+            - "5433:5432"
+        restart: always
+        environment:
+            - POSTGRES_PASSWORD=password
+            - POSTGRES_USER=postgres
+            - POSTGRES_DB=research_db
+        volumes:
+            - pgdata-research:/var/lib/postgresql/data
+
+volumes:
+    pgdata-research:

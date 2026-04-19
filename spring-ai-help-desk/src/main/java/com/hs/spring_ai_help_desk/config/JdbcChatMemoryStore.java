@@ -75,4 +75,18 @@ public class JdbcChatMemoryStore implements ChatMemoryStore {
 		jdbcTemplate.update("DELETE FROM chat_memory WHERE memory_id = ?", memoryId.toString());
 	}
 
+	public List<String> getAllConversationIds() {
+		return jdbcTemplate.query(
+				"SELECT memory_id FROM chat_memory ORDER BY memory_id",
+				(ResultSet rs, int rowNum) -> rs.getString("memory_id"));
+	}
+
+	public String getRawMessages(String memoryId) {
+		List<String> results = jdbcTemplate.query(
+				"SELECT messages FROM chat_memory WHERE memory_id = ?",
+				(ResultSet rs, int rowNum) -> rs.getString("messages"),
+				memoryId);
+		return results.isEmpty() ? null : results.getFirst();
+	}
+
 }

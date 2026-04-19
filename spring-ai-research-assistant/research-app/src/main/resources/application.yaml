@@ -1,0 +1,99 @@
+spring:
+  application:
+    name: "spring-ai-research-assistant"
+  profiles:
+    active: dev
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/research_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:password}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+
+langchain4j:
+  open-ai:
+    chat-model:
+      api-key: ${OPENAI_API_KEY}
+      model-name: gpt-4o-mini
+      temperature: 0.0
+      max-tokens: 2000
+      log-requests: false
+      log-responses: false
+    streaming-chat-model:
+      api-key: ${OPENAI_API_KEY}
+      model-name: gpt-4o-mini
+      temperature: 0.0
+      max-tokens: 2000
+    embedding-model:
+      api-key: ${OPENAI_API_KEY}
+      model-name: text-embedding-3-small
+      dimensions: 512
+
+app:
+  pgvector:
+    host: ${DB_HOST:localhost}
+    port: ${DB_PORT:5433}
+    database: ${DB_NAME:research_db}
+    user: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:password}
+    table: research_embeddings
+    dimension: 512
+  cache:
+    table: semantic_cache
+    similarity-threshold: 0.95
+  models:
+    powerful: gpt-4o
+    fast: gpt-4o-mini
+    complexity-threshold: 0.6
+  constraints:
+    p95-latency-ms: 10000
+    cost-ceiling-per-request: 0.50
+    max-concurrent-llm-calls: 5
+    queue-capacity: 20
+  security:
+    default-tenant: "default"
+    max-tool-calls-per-session: 20
+    audit-enabled: true
+  strategy:
+    task-model-map:
+      RESEARCH: "gpt-4o"
+      WRITING: "gpt-4o"
+      REVIEW: "gpt-4o-mini"
+      CLASSIFICATION: "gpt-4o-mini"
+      EXTRACTION: "gpt-4o-mini"
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  show-actuator: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,custom-costs
+  endpoint:
+    health:
+      show-details: when-authorized
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: AI Research Assistant
+    description: Multi-agent AI Research Assistant with advanced RAG, guardrails, evaluation, and observability
+    version: 0.0.1-SNAPSHOT

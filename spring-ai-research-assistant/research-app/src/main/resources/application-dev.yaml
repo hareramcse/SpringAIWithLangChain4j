@@ -1,0 +1,10 @@
+langchain4j:
+  open-ai:
+    chat-model:
+      log-requests: true
+      log-responses: true
+
+logging:
+  level:
+    com.hs.spring_ai_research: DEBUG
+    dev.langchain4j: DEBUG
