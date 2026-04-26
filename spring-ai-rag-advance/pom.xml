@@ -10,7 +10,7 @@
 		<relativePath />
 	</parent>
 	<groupId>com.hs</groupId>
-	<artifactId>spring-ai-rag</artifactId>
+	<artifactId>spring-ai-rag-advance</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name />
 	<description />
