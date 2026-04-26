@@ -20,5 +20,4 @@ public class ChatController {
 	public ResponseEntity<String> getResponse(@RequestBody String query) {
 		return ResponseEntity.ok(chatService.chat(query));
 	}
-
 }

@@ -7,18 +7,22 @@ import org.springframework.stereotype.Service;
 
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.DocumentSplitter;
-import dev.langchain4j.data.document.splitter.DocumentSplitters;
 import dev.langchain4j.data.segment.TextSegment;
 
 @Service
 public class DataTransformerImpl implements DataTransformer {
 
+	private final DocumentSplitter documentSplitter;
+
+	public DataTransformerImpl(DocumentSplitter documentSplitter) {
+		this.documentSplitter = documentSplitter;
+	}
+
 	@Override
 	public List<TextSegment> transform(List<Document> documents) {
-		DocumentSplitter splitter = DocumentSplitters.recursive(300, 50);
 		List<TextSegment> segments = new ArrayList<>();
 		for (Document doc : documents) {
-			segments.addAll(splitter.split(doc));
+			segments.addAll(documentSplitter.split(doc));
 		}
 		return segments;
 	}

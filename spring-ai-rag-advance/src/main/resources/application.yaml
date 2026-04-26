@@ -17,6 +17,32 @@ langchain4j:
       dimensions: 512
 
 app:
+  rag:
+    retrieval:
+      min-score: 0.3
+      # Final number of chunks passed to the chat model after re-rank + optional MMR.
+      max-results: 3
+      # Wider dense retrieval pool when re-ranking is on; must be >= rerank-candidate-cap.
+      initial-max-results: 15
+    reranking:
+      enabled: true
+      # Batched LLM cross-encoder-style relevance scores per segment.
+      cross-encoder-max-segments-per-call: 6
+      # How many fused passages receive cross-encoder scores before MMR / final trim (>= max-results).
+      rerank-candidate-cap: 12
+      mmr-enabled: true
+      # Balance relevance vs diversity in [0,1] (higher = more relevance to query, lower = more diversity).
+      mmr-lambda: 0.5
+      # Optional minimum re-rank score after cross-encoder (omit for no floor).
+      # min-score: 0.1
+    # Bound in ChunkingConfig via @Value
+    chunking:
+      # Which splitter to use: RECURSIVE | PARAGRAPH | SENTENCE | LINE | WORD | CHARACTER
+      strategy: RECURSIVE
+      # Target max segment size in characters (hierarchical strategies cap blocks before sub-splitting).
+      max-segment-size-chars: 300
+      # Character overlap between adjacent chunks where the splitter supports it.
+      max-overlap-chars: 50
   pgvector:
     host: localhost
     port: 5432

@@ -47,5 +47,4 @@ public class SpringAiRagApplication {
 			log.info("Data pipeline complete.");
 		};
 	}
-
 }
