@@ -13,12 +13,12 @@ import dev.langchain4j.model.output.Response;
 import dev.langchain4j.model.scoring.ScoringModel;
 
 /**
- * POC “cross-encoder”: the chat model returns a JSON array of relevance scores in {@code [0,1]} per passage.
- * Used together with {@link SimpleRerankingAggregator} in {@link com.hs.spring_ai_rag.config.AiConfig}.
+ * LLM-as-judge relevance: the chat model returns a JSON array of scores in {@code [0,1]} per passage batch.
  */
 public class LlmCrossEncoderScoringModel implements ScoringModel {
 
-	private static final Pattern FENCE = Pattern.compile("^```(?:json)?\\s*|\\s*```$", Pattern.MULTILINE);
+	private static final Pattern MARKDOWN_FENCE = Pattern.compile("^```(?:json)?\\s*|\\s*```$", Pattern.MULTILINE);
+	private static final double NEUTRAL_FALLBACK_SCORE = 0.5;
 
 	private final ChatModel chatModel;
 	private final int maxSegmentsPerCall;
@@ -37,20 +37,26 @@ public class LlmCrossEncoderScoringModel implements ScoringModel {
 		List<Double> scores = new ArrayList<>(segments.size());
 		for (int from = 0; from < segments.size(); from += maxSegmentsPerCall) {
 			int to = Math.min(from + maxSegmentsPerCall, segments.size());
-			List<TextSegment> batch = segments.subList(from, to);
-			scores.addAll(scoreBatch(batch, query));
+			scores.addAll(scoreBatch(segments.subList(from, to), query));
 		}
 		return Response.from(scores);
 	}
 
 	private List<Double> scoreBatch(List<TextSegment> batch, String query) {
+		String prompt = buildScoringPrompt(query, batch);
+		String raw = chatModel.chat(prompt);
+		String cleaned = stripMarkdownFences(raw);
+		return parseAndClampScores(cleaned, batch.size());
+	}
+
+	private String buildScoringPrompt(String query, List<TextSegment> batch) {
 		StringBuilder passages = new StringBuilder();
 		for (int i = 0; i < batch.size(); i++) {
 			passages.append("PASSAGE_").append(i).append(":\n")
 					.append(batch.get(i).text().replace("\"", "'"))
 					.append("\n\n");
 		}
-		String prompt = """
+		return """
 				You are a cross-encoder relevance judge. Given a QUERY and numbered PASSAGE excerpts, output ONLY a JSON array of %d numbers, each between 0 and 1 inclusive, measuring how relevant that passage is to answering the QUERY. The array length must be exactly %d and order must match PASSAGE_0, PASSAGE_1, ...
 				No markdown, no keys, no explanation — only the JSON array.
 
@@ -59,29 +65,38 @@ public class LlmCrossEncoderScoringModel implements ScoringModel {
 
 				%s
 				""".formatted(batch.size(), batch.size(), query, passages);
-		String raw = chatModel.chat(prompt);
-		String cleaned = FENCE.matcher(raw.trim()).replaceAll("").trim();
+	}
+
+	private String stripMarkdownFences(String raw) {
+		return MARKDOWN_FENCE.matcher(raw.trim()).replaceAll("").trim();
+	}
+
+	private List<Double> parseAndClampScores(String json, int expectedCount) {
 		try {
-			List<Double> parsed = objectMapper.readValue(cleaned, new TypeReference<>() {
+			List<Double> parsed = objectMapper.readValue(json, new TypeReference<>() {
 			});
-			if (parsed.size() != batch.size()) {
-				return padNeutral(batch.size());
+			if (parsed.size() != expectedCount) {
+				return neutralScores(expectedCount);
 			}
 			List<Double> clamped = new ArrayList<>(parsed.size());
 			for (Double v : parsed) {
 				double x = v == null ? 0.0 : v;
-				clamped.add(Math.max(0.0, Math.min(1.0, x)));
+				clamped.add(clamp01(x));
 			}
 			return clamped;
 		} catch (Exception e) {
-			return padNeutral(batch.size());
+			return neutralScores(expectedCount);
 		}
 	}
 
-	private static List<Double> padNeutral(int n) {
+	private static double clamp01(double x) {
+		return Math.max(0.0, Math.min(1.0, x));
+	}
+
+	private static List<Double> neutralScores(int n) {
 		List<Double> out = new ArrayList<>(n);
 		for (int i = 0; i < n; i++) {
-			out.add(0.5);
+			out.add(NEUTRAL_FALLBACK_SCORE);
 		}
 		return out;
 	}

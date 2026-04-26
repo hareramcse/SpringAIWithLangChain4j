@@ -4,35 +4,34 @@ import java.util.List;
 
 import org.springframework.stereotype.Component;
 
+import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class EmbeddingStoreHelper {
 
 	private final EmbeddingStore<TextSegment> embeddingStore;
 	private final EmbeddingModel embeddingModel;
 
-	public EmbeddingStoreHelper(EmbeddingStore<TextSegment> embeddingStore, EmbeddingModel embeddingModel) {
-		this.embeddingStore = embeddingStore;
-		this.embeddingModel = embeddingModel;
-	}
-
 	public void embedAndStore(List<TextSegment> segments) {
-		for (TextSegment segment : segments) {
-			var embedding = embeddingModel.embed(segment).content();
-			embeddingStore.add(embedding, segment);
+		if (segments.isEmpty()) {
+			return;
 		}
-		log.info("Embedded and stored {} text segments.", segments.size());
+		List<Embedding> embeddings = embeddingModel.embedAll(segments).content();
+		embeddingStore.addAll(embeddings, segments);
+		log.info("Embedded and stored {} segment(s).", segments.size());
 	}
 
 	public boolean hasExistingData() {
-		var probe = embeddingModel.embed("test").content();
+		Embedding probe = embeddingModel.embed("test").content();
 		var request = EmbeddingSearchRequest.builder()
 				.queryEmbedding(probe)
 				.maxResults(1)
@@ -40,5 +39,4 @@ public class EmbeddingStoreHelper {
 				.build();
 		return !embeddingStore.search(request).matches().isEmpty();
 	}
-
 }

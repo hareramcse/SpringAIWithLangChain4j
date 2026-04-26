@@ -7,17 +7,16 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.hs.spring_ai_rag.service.ChatService;
 
+import lombok.RequiredArgsConstructor;
+
 @RestController
+@RequiredArgsConstructor
 public class ChatController {
 
 	private final ChatService chatService;
 
-	public ChatController(ChatService chatService) {
-		this.chatService = chatService;
-	}
-
 	@PostMapping("/chat")
-	public ResponseEntity<String> getResponse(@RequestBody String query) {
-		return ResponseEntity.ok(chatService.chat(query));
+	public ResponseEntity<String> chat(@RequestBody String userQuery) {
+		return ResponseEntity.ok(chatService.chat(userQuery));
 	}
 }

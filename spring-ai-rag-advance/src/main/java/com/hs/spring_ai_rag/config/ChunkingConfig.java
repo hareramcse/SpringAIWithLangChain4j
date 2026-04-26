@@ -1,6 +1,5 @@
 package com.hs.spring_ai_rag.config;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -21,13 +20,17 @@ import lombok.extern.slf4j.Slf4j;
 public class ChunkingConfig {
 
 	@Bean
-	public DocumentSplitter documentSplitter(
-			@Value("${app.rag.chunking.strategy}") ChunkingStrategy strategy,
-			@Value("${app.rag.chunking.max-segment-size-chars}") int maxSegmentSizeChars,
-			@Value("${app.rag.chunking.max-overlap-chars}") int maxOverlapChars) {
-		DocumentSplitter splitter = buildSplitter(strategy, maxSegmentSizeChars, maxOverlapChars);
-		log.info("RAG chunking: strategy={}, maxSegmentSizeChars={}, maxOverlapChars={}",
-				strategy, maxSegmentSizeChars, maxOverlapChars);
+	public DocumentSplitter documentSplitter(AppRagProperties rag) {
+		var chunking = rag.chunking();
+		DocumentSplitter splitter = buildSplitter(
+				chunking.strategy(),
+				chunking.maxSegmentSizeChars(),
+				chunking.maxOverlapChars());
+		log.info(
+				"RAG chunking: strategy={}, maxSegmentSizeChars={}, maxOverlapChars={}",
+				chunking.strategy(),
+				chunking.maxSegmentSizeChars(),
+				chunking.maxOverlapChars());
 		return splitter;
 	}
 

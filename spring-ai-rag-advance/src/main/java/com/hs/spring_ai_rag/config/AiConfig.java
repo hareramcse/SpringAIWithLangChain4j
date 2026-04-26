@@ -1,9 +1,8 @@
 package com.hs.spring_ai_rag.config;
 
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.env.Environment;
 
 import com.hs.spring_ai_rag.rag.LlmCrossEncoderScoringModel;
 import com.hs.spring_ai_rag.rag.SimpleRerankingAggregator;
@@ -23,56 +22,47 @@ import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.pgvector.PgVectorEmbeddingStore;
 
 /**
- * AI / RAG wiring kept small for a POC: pgvector retrieval, optional query expansion, then optional re-rank + MMR
- * (see {@link SimpleRerankingAggregator} and {@link LlmCrossEncoderScoringModel}).
+ * RAG wiring: pgvector retrieval, query expansion, optional LLM re-rank + MMR.
  */
 @Configuration
+@EnableConfigurationProperties({AppRagProperties.class, AppPgVectorProperties.class})
 public class AiConfig {
 
+	/** Paraphrases from {@link ExpandingQueryTransformer}; not bound from YAML in this project. */
+	private static final int QUERY_EXPANSION_VARIANTS = 3;
+
 	@Bean
-	public EmbeddingStore<TextSegment> embeddingStore(
-			@Value("${app.pgvector.host}") String host,
-			@Value("${app.pgvector.port}") int port,
-			@Value("${app.pgvector.database}") String database,
-			@Value("${app.pgvector.user}") String user,
-			@Value("${app.pgvector.password}") String password,
-			@Value("${app.pgvector.table}") String table,
-			@Value("${app.pgvector.dimension}") int dimension) {
+	public EmbeddingStore<TextSegment> embeddingStore(AppPgVectorProperties pg) {
 		return PgVectorEmbeddingStore.builder()
-				.host(host)
-				.port(port)
-				.database(database)
-				.user(user)
-				.password(password)
-				.table(table)
-				.dimension(dimension)
+				.host(pg.host())
+				.port(pg.port())
+				.database(pg.database())
+				.user(pg.user())
+				.password(pg.password())
+				.table(pg.table())
+				.dimension(pg.dimension())
 				.createTable(true)
 				.build();
 	}
 
-	/** LLM scores each passage vs the query (cross-encoder style for a POC). */
 	@Bean
-	public ScoringModel crossEncoderScoringModel(ChatModel chatModel, Environment environment) {
-		int batch = environment.getProperty("app.rag.reranking.cross-encoder-max-segments-per-call", Integer.class, 6);
-		return new LlmCrossEncoderScoringModel(chatModel, batch);
+	public ScoringModel crossEncoderScoringModel(ChatModel chatModel, AppRagProperties rag) {
+		return new LlmCrossEncoderScoringModel(chatModel, rag.reranking().crossEncoderMaxSegmentsPerCall());
 	}
 
 	@Bean
 	public ContentRetriever contentRetriever(
 			EmbeddingStore<TextSegment> embeddingStore,
 			EmbeddingModel embeddingModel,
-			Environment environment,
-			@Value("${app.rag.retrieval.min-score}") double minScore,
-			@Value("${app.rag.retrieval.max-results}") int maxResults,
-			@Value("${app.rag.retrieval.initial-max-results}") int initialMaxResults) {
-		boolean rerankOn = environment.getProperty("app.rag.reranking.enabled", Boolean.class, false);
-		validatePool(environment, rerankOn);
-		int pool = rerankOn ? initialMaxResults : maxResults;
+			AppRagProperties rag) {
+		assertRetrievalPoolValid(rag);
+		var retrieval = rag.retrieval();
+		int pool = rag.reranking().enabled() ? retrieval.initialMaxResults() : retrieval.maxResults();
 		return EmbeddingStoreContentRetriever.builder()
 				.embeddingStore(embeddingStore)
 				.embeddingModel(embeddingModel)
 				.maxResults(pool)
-				.minScore(minScore)
+				.minScore(retrieval.minScore())
 				.build();
 	}
 
@@ -80,49 +70,45 @@ public class AiConfig {
 	public RetrievalAugmentor retrievalAugmentor(
 			ContentRetriever contentRetriever,
 			ChatModel chatModel,
-			Environment environment,
 			EmbeddingModel embeddingModel,
 			ScoringModel crossEncoderScoringModel,
-			@Value("${app.rag.reranking.enabled}") boolean rerankingEnabled,
-			@Value("${app.rag.retrieval.max-results}") int finalMaxResults,
-			@Value("${app.rag.reranking.rerank-candidate-cap}") int rerankCandidateCap,
-			@Value("${app.rag.reranking.mmr-enabled}") boolean mmrEnabled,
-			@Value("${app.rag.reranking.mmr-lambda}") double mmrLambda) {
-		Double minRerank = environment.getProperty("app.rag.reranking.min-score", Double.class);
-		ContentAggregator aggregator = rerankingEnabled
+			AppRagProperties rag) {
+		var reranking = rag.reranking();
+		ContentAggregator aggregator = reranking.enabled()
 				? new SimpleRerankingAggregator(
 						crossEncoderScoringModel,
-						minRerank,
-						rerankCandidateCap,
-						finalMaxResults,
-						mmrEnabled,
-						clamp01(mmrLambda),
+						reranking.minScore(),
+						reranking.rerankCandidateCap(),
+						rag.retrieval().maxResults(),
+						reranking.mmrEnabled(),
+						clampToUnitInterval(reranking.mmrLambda()),
 						embeddingModel)
 				: new DefaultContentAggregator();
 		return DefaultRetrievalAugmentor.builder()
 				.contentRetriever(contentRetriever)
-				.queryTransformer(new ExpandingQueryTransformer(chatModel, 3))
+				.queryTransformer(new ExpandingQueryTransformer(chatModel, QUERY_EXPANSION_VARIANTS))
 				.contentAggregator(aggregator)
 				.build();
 	}
 
-	private static void validatePool(Environment env, boolean rerankOn) {
-		int max = env.getProperty("app.rag.retrieval.max-results", Integer.class, 0);
-		int initial = env.getProperty("app.rag.retrieval.initial-max-results", Integer.class, 0);
-		if (max <= 0 || initial <= 0) {
+	private static void assertRetrievalPoolValid(AppRagProperties rag) {
+		var retrieval = rag.retrieval();
+		if (retrieval.maxResults() <= 0 || retrieval.initialMaxResults() <= 0) {
 			throw new IllegalStateException("app.rag.retrieval.max-results and initial-max-results must be positive");
 		}
-		if (!rerankOn) {
+		if (!rag.reranking().enabled()) {
 			return;
 		}
-		int cap = env.getProperty("app.rag.reranking.rerank-candidate-cap", Integer.class, 0);
-		if (cap <= 0 || cap < max || initial < cap) {
+		var reranking = rag.reranking();
+		int cap = reranking.rerankCandidateCap();
+		if (cap <= 0 || cap < retrieval.maxResults() || retrieval.initialMaxResults() < cap) {
 			throw new IllegalStateException(
-					"When reranking is on: rerank-candidate-cap >= max-results and initial-max-results >= rerank-candidate-cap");
+					"When reranking is enabled: app.rag.reranking.rerank-candidate-cap must be "
+							+ ">= app.rag.retrieval.max-results and <= app.rag.retrieval.initial-max-results");
 		}
 	}
 
-	private static double clamp01(double v) {
+	private static double clampToUnitInterval(double v) {
 		return Math.max(0.0, Math.min(1.0, v));
 	}
 }

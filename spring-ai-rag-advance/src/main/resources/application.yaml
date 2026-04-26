@@ -35,7 +35,7 @@ app:
       mmr-lambda: 0.5
       # Optional minimum re-rank score after cross-encoder (omit for no floor).
       # min-score: 0.1
-    # Bound in ChunkingConfig via @Value
+    # Bound via AppRagProperties.chunking() → ChunkingConfig
     chunking:
       # Which splitter to use: RECURSIVE | PARAGRAPH | SENTENCE | LINE | WORD | CHARACTER
       strategy: RECURSIVE

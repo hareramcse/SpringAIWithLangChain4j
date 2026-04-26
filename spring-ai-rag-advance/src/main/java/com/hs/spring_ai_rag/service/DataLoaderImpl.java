@@ -22,6 +22,8 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 public class DataLoaderImpl implements DataLoader {
 
+	private static final ObjectMapper JSON = new ObjectMapper();
+
 	@Value("classpath:static/sample_data.json")
 	private Resource jsonResource;
 
@@ -30,41 +32,46 @@ public class DataLoaderImpl implements DataLoader {
 
 	@Override
 	public List<Document> loadDocumentsFromJson() {
-		log.info("started loading json file data");
-		List<Document> documents = new ArrayList<>();
+		log.info("Loading JSON documents");
 		try {
-			ObjectMapper mapper = new ObjectMapper();
 			String jsonContent = jsonResource.getContentAsString(StandardCharsets.UTF_8);
-			JsonNode rootNode = mapper.readTree(jsonContent);
-
-			if (rootNode.isArray()) {
-				for (JsonNode node : rootNode) {
-					JsonNode projectNode = node.get("project");
-					if (projectNode != null) {
-						documents.add(Document.from(projectNode.toString()));
-					} else {
-						documents.add(Document.from(node.toString()));
-					}
-				}
-			} else {
-				documents.add(Document.from(jsonContent));
-			}
+			JsonNode root = JSON.readTree(jsonContent);
+			return documentsFromJsonRoot(root, jsonContent);
 		} catch (IOException e) {
 			log.error("Failed to load JSON data", e);
+			return List.of();
 		}
-		return documents;
 	}
 
 	@Override
 	public List<Document> loadDocumentsFromPdf() {
-		log.info("started loading pdf data");
-		try (InputStream is = pdfResource.getInputStream()) {
+		log.info("Loading PDF document");
+		try (InputStream inputStream = pdfResource.getInputStream()) {
 			ApacheTikaDocumentParser parser = new ApacheTikaDocumentParser();
-			Document doc = parser.parse(is);
-			return List.of(doc);
+			return List.of(parser.parse(inputStream));
 		} catch (IOException e) {
 			log.error("Failed to load PDF data", e);
 			return List.of();
 		}
+	}
+
+	private static List<Document> documentsFromJsonRoot(JsonNode root, String rawJson) {
+		List<Document> documents = new ArrayList<>();
+		if (root.isArray()) {
+			for (JsonNode node : root) {
+				documents.add(documentFromJsonNode(node));
+			}
+		} else {
+			documents.add(Document.from(rawJson));
+		}
+		return documents;
+	}
+
+	private static Document documentFromJsonNode(JsonNode node) {
+		JsonNode project = node.get("project");
+		if (project != null) {
+			return Document.from(project.toString());
+		}
+		return Document.from(node.toString());
 	}
 }

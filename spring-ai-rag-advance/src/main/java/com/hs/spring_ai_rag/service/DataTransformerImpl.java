@@ -21,8 +21,8 @@ public class DataTransformerImpl implements DataTransformer {
 	@Override
 	public List<TextSegment> transform(List<Document> documents) {
 		List<TextSegment> segments = new ArrayList<>();
-		for (Document doc : documents) {
-			segments.addAll(documentSplitter.split(doc));
+		for (Document document : documents) {
+			segments.addAll(documentSplitter.split(document));
 		}
 		return segments;
 	}

@@ -1,6 +1,6 @@
 # RAG technical documentation
 
-This document ties **ideas** (why a step exists, what failure it addresses) to **this repository**: `application.yaml`, `AiConfig.java`, `ChunkingConfig.java`, `SimpleRerankingAggregator.java`, and `LlmCrossEncoderScoringModel.java`. Examples are **invented** policy snippets unless stated otherwise.
+This document ties **ideas** (why a step exists, what failure it addresses) to **this repository**: `application.yaml`, **`AppRagProperties`** (`app.rag.*`), **`AppPgVectorProperties`** (`app.pgvector.*`), `AiConfig.java`, `ChunkingConfig.java`, `SimpleRerankingAggregator.java`, `MmrSelector.java`, `LlmCrossEncoderScoringModel.java`, and `IngestionRunner.java`. OpenAI settings stay under `langchain4j.open-ai` (starter). Examples are **invented** policy snippets unless stated otherwise.
 
 ---
 
@@ -20,7 +20,7 @@ Whole PDFs or JSON blobs are too long for one embedding and one retrieval hit. I
 - **Generator limits:** without chunks, you would paste entire files or arbitrary truncations.
 
 **In this app**  
-`ChunkingConfig` builds a LangChain4j `DocumentSplitter` from `app.rag.chunking.*`. Sizes are in **characters**, not tokens.
+`ChunkingConfig` builds a LangChain4j `DocumentSplitter` from **`AppRagProperties.chunking()`** (YAML `app.rag.chunking.*`). Sizes are in **characters**, not tokens.
 
 **Example (why size matters)**  
 Suppose the true sentence is: *“Opened software may not be returned.”*  
@@ -209,7 +209,7 @@ Below: **default → why use it → what it fixes → why not another value → 
 
 - **Why:** When re-ranking is on, each expanded query retrieves a **wider** list so the true answer can sit at **rank 8–12** and still enter the **re-rank cap**.  
 - **Fixes:** **Early rank errors** from vectors alone.  
-- **Why not `< rerank-candidate-cap`:** `AiConfig.validatePool` **fails startup** — invalid.  
+- **Why not `< rerank-candidate-cap`:** `AiConfig` startup validation **fails** — invalid.  
 - **Why not `5`:** Pool too small; the correct segment might never appear in **any** of the three lists’ top-5.  
 - **Why not `40`:** Better recall chance but **slower** retrieval and **noisier** fusion; re-rank cap still trims to **12**, so marginal gains past a point go to waste unless you also raise **`rerank-candidate-cap`**.  
 - **Example:** Gold chunk is **#11** on Q2 — with **15** it is retrieved; with **8** it is **invisible** to the pipeline.
@@ -351,8 +351,10 @@ Below: **default → why use it → what it fixes → why not another value → 
 
 | Topic | Files |
 |-------|--------|
-| Chunking | `ChunkingConfig.java`, `ChunkingStrategy.java`, `DataTransformerImpl.java` |
-| Store, retriever, augmentor | `AiConfig.java` |
+| Chunking | `ChunkingConfig.java`, `AppRagProperties.java` (`chunking`), `ChunkingStrategy.java`, `DataTransformerImpl.java` |
+| Store, retriever, augmentor | `AiConfig.java`, `AppRagProperties.java`, `AppPgVectorProperties.java` |
 | LLM scoring | `LlmCrossEncoderScoringModel.java` |
 | Re-rank, MMR, original query | `SimpleRerankingAggregator.java` |
-| Ingest / API | `SpringAiRagApplication.java`, `EmbeddingStoreHelper.java`, `ChatController.java`, `ChatService.java` |
+| Ingest | `IngestionRunner.java`, `EmbeddingStoreHelper.java` |
+| API | `ChatController.java`, `ChatService.java` |
+| App entry | `SpringAiRagApplication.java` |
