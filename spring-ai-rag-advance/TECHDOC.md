@@ -1,360 +1,354 @@
-# RAG technical documentation
+# Technical guide: RAG in this project (for beginners)
 
-This document ties **ideas** (why a step exists, what failure it addresses) to **this repository**: `application.yaml`, **`AppRagProperties`** (`app.rag.*`), **`AppPgVectorProperties`** (`app.pgvector.*`), `AiConfig.java`, `ChunkingConfig.java`, `SimpleRerankingAggregator.java`, `MmrSelector.java`, `LlmCrossEncoderScoringModel.java`, and `IngestionRunner.java`. OpenAI settings stay under `langchain4j.open-ai` (starter). Examples are **invented** policy snippets unless stated otherwise.
-
----
-
-## Part A — Concepts: why each exists, what it fixes
-
-### A.1 Chunking
-
-**What it is**  
-Whole PDFs or JSON blobs are too long for one embedding and one retrieval hit. Ingest splits each `Document` into many **`TextSegment`** values; each segment is embedded once and stored in pgvector.
-
-**Why the concept**  
-- **One vector cannot represent ten pages faithfully** — the model averages themes; retrieval becomes vague.  
-- **The generator only sees a few segments** — chunking defines what “one piece of evidence” means.
-
-**What problem it fixes**  
-- **Over-long units:** user asks a narrow question but the vector matches a whole chapter; the wrong subsection can dominate.  
-- **Generator limits:** without chunks, you would paste entire files or arbitrary truncations.
-
-**In this app**  
-`ChunkingConfig` builds a LangChain4j `DocumentSplitter` from **`AppRagProperties.chunking()`** (YAML `app.rag.chunking.*`). Sizes are in **characters**, not tokens.
-
-**Example (why size matters)**  
-Suppose the true sentence is: *“Opened software may not be returned.”*  
-- If chunks are **huge**, that sentence sits inside a segment that also talks about **shipping** and **warranties**. A question about opened software might still retrieve that chunk, but the model reads three topics and may **cite shipping** by mistake.  
-- If chunks are **tiny** (e.g. 50 characters), you might get *“Opened soft”* in one segment and *“ware may not be returned.”* in the next — retrieval returns **unreadable** text and answers degrade.
+This repository is a **small RAG (Retrieval-Augmented Generation) demo** built with **Spring Boot** and **LangChain4j** (not the separate **Spring AI** library from Spring—same *ideas*, different dependency names). If you know Spring Boot but are new to RAG, this guide walks you through **what happens**, **why each step exists**, and **where it lives in the code**.
 
 ---
 
-### A.2 Embeddings and pgvector
+## Table of contents
 
-**What it is**  
-Each `TextSegment` is embedded with **`text-embedding-3-small`** (512 dimensions in YAML). The query is embedded the same way. **pgvector** stores vectors in Postgres and returns **nearest neighbours** by similarity.
-
-**Why the concept**  
-Users do not repeat handbook wording; **semantic** similarity still surfaces relevant passages.
-
-**What problem it fixes**  
-Keyword-only search misses paraphrases; a vector index gives a **fast shortlist** of plausible passages.
-
-**Why pgvector here (not a separate search engine)**  
-One database for app data and vectors: **simpler ops** for a POC. The design trade-off is scale and tuning options versus dedicated vector SaaS — acceptable for demos and moderate corpora.
-
-**Example**  
-Query: *“How long do I have to send something back?”*  
-A segment containing *“returns within 30 days”* can rank high even without the word *“send”*.
+1. [What is RAG? (plain English)](#1-what-is-rag-plain-english)
+2. [What this application does](#2-what-this-application-does)
+3. [What you need before running it](#3-what-you-need-before-running-it)
+4. [Spring Boot ideas used here](#4-spring-boot-ideas-used-here)
+5. [Examples: sample files to answers](#5-examples-sample-files-to-answers) — [5.1](#51-return-policy-style) · [5.2](#52-sample_datajson) · [5.3](#53-cricket_rulespdf)
+6. [Pipeline step by step (concepts)](#6-pipeline-step-by-step-concepts)
+7. [Configuration: every important setting](#7-configuration-every-important-setting)
+8. [Quick reference table](#8-quick-reference-table)
+9. [Where to read the code](#9-where-to-read-the-code)
+10. [Glossary](#10-glossary)
 
 ---
 
-### A.3 Dense retrieval — strengths and limits
+## 1. What is RAG? (plain English)
 
-**What it is**  
-Similarity compares **one query vector** to **one passage vector** (bi-encoder style). That is **cheap** but **coarse**.
+**Without RAG:** A chat model only knows what it was trained on. It can *sound* confident about *your* internal PDFs even when it is guessing.
 
-**What problem it fixes**  
-Fast **recall**: “anything in the ballpark” enters the candidate pool.
+**With RAG:** You **store your documents** in a searchable way. When the user asks a question, the app **finds the most relevant snippets** and **pastes them into the prompt** as *evidence*. The model is instructed to **answer from that evidence**. That is the “**R**etrieval” part; “**A**ugmented” means the prompt is augmented with retrieved text; “**G**eneration” is the normal chat reply.
 
-**What it does *not* fix by itself**  
-**Precision**: two passages can embed similarly because they share vocabulary or domain (*returns*, *software*) while only one **answers** the question. Dense search often has **high recall, lower precision** at the top of the list.
+Think of it like a **librarian**:
 
-**Example (precision failure)**  
-Query: *“Can I return opened software?”*  
-- Segment A: *“Returns must be postmarked within 30 days for unopened items…”* — shares “return” with the question; **high similarity**.  
-- Segment B: *“Opened software may not be returned.”* — the **direct** answer; might rank **second**.  
-Vector-only top-1 can therefore be **A** (noisy). A second stage (re-ranking) is meant to **swap** A and B after reading both with the query.
+1. **Ingest** — Cut books into pages (chunks), file them in a catalog (vector database).
+2. **Retrieve** — When someone asks a question, find the best pages (similarity search).
+3. **Generate** — Give those pages to someone who writes the final answer (the LLM).
 
 ---
 
-### A.4 Query expansion (three paraphrases)
+## 2. What this application does
 
-**What it is**  
-`AiConfig` wires `ExpandingQueryTransformer(chatModel, 3)` — the chat model produces **three** query strings (original-style paraphrases). **The count `3` is fixed in Java**, not in `application.yaml`.
+| Phase | What happens |
+|-------|----------------|
+| **Startup (once)** | If the embedding table is empty: load sample **PDF** + **JSON**, **split** into text segments, **embed** them, **save** vectors in **Postgres (pgvector)**. See `IngestionRunner`. |
+| **Each chat request** | `POST /chat` with the user’s question as a **plain-text body**. LangChain4j builds a **retrieval augmentor**: expand the query → search pgvector → optionally **re-rank** and **MMR** → call the chat model with the **top snippets** + question. See `ChatController` → `ChatService`. |
 
-**Why the concept**  
-Users phrase questions differently from the document. Multiple embeddings retrieve **different** shortlists.
+**Models (from `application.yaml`):**
 
-**What problem it fixes**  
-**Vocabulary mismatch**: one phrasing misses the chunk another phrasing hits.
-
-**Example**  
-User: *“Can I send back opened software?”*  
-Expanded queries might include *“refund for opened software”* and *“return policy activated software”*. A chunk that says *“non-refundable once license key revealed”* might rank higher on expansion 2 than on expansion 1.
-
-**Why not ten paraphrases**  
-Each extra query is **another full retrieval** — latency and cost grow linearly; returns diminish. Three is a common **POC balance**.
+- **Embeddings:** `text-embedding-3-small` — turns each text snippet and each question into a **vector** (a list of numbers).
+- **Chat:** `gpt-4o-mini` — used to **paraphrase** the question, **score** passages for re-ranking, and **write** the final answer.
 
 ---
 
-### A.5 Fusion (Reciprocal Rank Fusion, RRF)
+## 3. What you need before running it
 
-**What it is**  
-After expansion, LangChain4j merges the **three ranked lists** with **`ReciprocalRankFuser`**: passages that rank well **across several lists** rise; one-list wonders can fall.
+- **Java 21** and **Maven** (to build).
+- **PostgreSQL** with the **pgvector** extension, and a database matching `app.pgvector.*` in `application.yaml`.
+- An **OpenAI API key** in the environment as `OPENAI_API_KEY` (used by the LangChain4j starter).
 
-**What problem it fixes**  
-A **single** bad or narrow embedding of the user question no longer decides everything.
-
-**Example**  
-If segment `seg-09` is #1 for Q1 only but absent from Q2/Q3, while `seg-01` is #2,#1,#3 across lists, **`seg-01`** tends to win after fusion — more **stable** consensus.
+If Postgres is wrong or empty, retrieval will fail or return nothing—fix **connection** settings under `app.pgvector` first.
 
 ---
 
-### A.6 Re-ranking (second stage)
+## 4. Spring Boot ideas used here
 
-**What it is**  
-After fusion, up to **`rerank-candidate-cap`** passages are scored by a LangChain4j **`ScoringModel`**. This app uses **`LlmCrossEncoderScoringModel`**: **`gpt-4o-mini`** outputs a **JSON array** of scores in `[0, 1]` — an **LLM-as-judge** that reads **query + passage together** (cross-encoder *behaviour*, not a separate cross-encoder model file or Cohere rerank API).
+You do **not** need to be a Spring expert, but these patterns appear everywhere in the project:
 
-**Why the concept**  
-Vectors answer *“roughly same topic?”*; re-ranking answers *“does this passage actually help answer this question?”*
+### 4.1 `application.yaml`
 
-**What problem it fixes**  
-**Noisy top-k** from A.3, **wrong ordering**, **prompt pollution** (tangential chunks steering the answer model).
+This file holds **settings** (database host, chunk sizes, model names). Spring reads it at startup.
 
-**Why scores use the original user message**  
-Expansion changes retrieval queries; **`SimpleRerankingAggregator.originalUserQuery()`** ensures scoring still targets the **real** user question.
+### 4.2 Typed configuration (`@ConfigurationProperties`)
 
-**Example (before vs after re-rank)**  
-**Fused order (vector-ish):**  
-1. Shipping paragraph mentioning “software”  
-2. Generic support paragraph  
-3. *“Opened software may not be returned.”*  
+Instead of scattering magic strings like `"app.rag.retrieval.max-results"` across the code, we use **records** that Spring **fills automatically** from YAML:
 
-**After LLM scores (illustrative):**  
-1. *Opened software…* → **0.94**  
-2. Returns window paragraph → **0.61**  
-3. Shipping → **0.22**  
+- **`AppRagProperties`** — maps the whole `app.rag` tree: **retrieval**, **reranking**, **chunking**.
+- **`AppPgVectorProperties`** — maps `app.pgvector` (Postgres + table + vector dimension).
 
-The generator now sees the **decisive** line first.
+`AiConfig` registers them with `@EnableConfigurationProperties({...})`. In bean methods you inject `AppRagProperties rag` and call `rag.retrieval().maxResults()` — your IDE can **autocomplete** field names. That is easier for beginners than remembering exact YAML paths.
 
----
+### 4.3 `@Configuration` and `@Bean`
 
-### A.7 MMR (Maximal Marginal Relevance)
+Classes like `AiConfig` and `ChunkingConfig` tell Spring **how to create objects** (the embedding store, the retriever, the document splitter). Those objects are **beans**: Spring creates **one shared instance** and injects it where needed (e.g. `DataTransformerImpl` gets the `DocumentSplitter`).
 
-**What it is**  
-After re-ranking, optional **MMR** picks the final **`max-results`** segments by trading **relevance** (re-rank score) against **redundancy** (embedding similarity to segments already chosen). Controlled by **`mmr-lambda`**.
+### 4.4 `CommandLineRunner`
 
-**What problem it fixes**  
-Handbook + FAQ often **repeat** the same policy; without MMR, the context window can contain **three near-copies** and miss a complementary fact (e.g. *how to request an RMA*).
+`IngestionRunner` runs **once after the app starts**. It checks “do we already have vectors?”; if not, it loads files and embeds. That is **not** part of the HTTP chat path.
 
-**Example**  
-Top re-ranked segments might be `policy-A`, `policy-A'`, `policy-A''` (tiny edits). MMR prefers `policy-A` then a segment with **different** embedding geometry, e.g. *RMA procedure*, if scores are close enough.
+### 4.5 LangChain4j vs “Spring AI”
+
+This project uses **`langchain4j-spring-boot-starter`** and **`langchain4j-open-ai-spring-boot-starter`**. The **Spring AI** project (`spring-ai-*` dependencies) is a different stack. RAG **concepts** (chunk, embed, retrieve, prompt) are the same; only the **library names and APIs** differ.
 
 ---
 
-### A.8 End-to-end pipeline (defaults)
+## 5. Examples: sample files to answers
 
-1. User message → **3** expanded queries (`AiConfig`).  
-2. Each query → pgvector → up to **`initial-max-results` (15)** segments (`EmbeddingStoreContentRetriever`).  
-3. **RRF** → one fused list.  
-4. Head of list → up to **`rerank-candidate-cap` (12)** scored in batches of **`cross-encoder-max-segments-per-call` (6)**.  
-5. Sort by scores; optional **`min-score`** filter; optional **MMR** with **`mmr-lambda` (0.5)**.  
-6. **`max-results` (3)** segments → prompt → **`gpt-4o-mini`** answer.
-
-If **`reranking.enabled: false`**, the retriever uses **`max-results`** as the pool size directly and **no** LLM re-rank step runs (`DefaultContentAggregator`).
+These three walkthroughs use the **same pipeline** (ingest → chunk → embed → expand → retrieve → fuse → re-rank → MMR → answer). Only the **source text** and **user question** change.
 
 ---
 
-## Part B — `application.yaml` (and related): each value explained
+### 5.1 Return-policy style
 
-Below: **default → why use it → what it fixes → why not another value → short example.**
+Imagine this sentence is buried inside a policy PDF (the wording is **made up** for teaching; your real PDF might be different):
 
-### B.1 Chunking — `app.rag.chunking`
+> *“Opened software may not be returned. Unopened items may be returned within 30 days.”*
 
-#### `strategy: RECURSIVE`
+#### Step A — Ingest (first run, empty database)
 
-- **Why:** Prefer natural boundaries (paragraphs, lines) **before** forcing `max-segment-size-chars`, so fewer ugly mid-sentence cuts than a raw character splitter.  
-- **Fixes:** Chunks that read like coherent fragments where the document structure allows.  
-- **Why not always `SENTENCE`:** Bullet lists and tables can produce **too many** tiny segments; `RECURSIVE` is a good default for mixed PDFs.  
-- **Example:** A numbered policy list stays grouped until the cap forces a split.
+1. **Load** — `DataLoaderImpl` reads a PDF into one big `Document`.
+2. **Chunk** — `ChunkingConfig` uses **`AppRagProperties.chunking()`** (default: **300** characters max per chunk, **50** overlap). Suppose we get two segments:
+   - **S1:** *“Opened software may not be returned. Unopened items may…”*
+   - **S2:** *“…Unopened items may be returned within 30 days.”* (overlap repeats part of S1.)
+3. **Embed** — `EmbeddingStoreHelper` embeds **all segments in one batch**, then `embeddingStore.addAll(...)` saves vectors in pgvector.
 
-#### `max-segment-size-chars: 300`
+#### Step B — User asks a question (`POST /chat`)
 
-- **Why:** Roughly **half to one short paragraph** — often **one main idea** per vector, so similarity is **less muddy** than multi-page chunks.  
-- **Fixes:** “Whole chapter one vector” blur; keeps ingest and index size moderate for a POC.  
-- **Why not ~50:** You get **fragments** — e.g. chunk 1 ends with *“fee applies after”*, chunk 2 starts *“day ten the fee is $25”* — retrieval may return **incomplete** sentences; the model guesses.  
-- **Why not ~800–1500:** One vector must represent **shipping + returns + exceptions** together; a query about *returns* still pulls that blob; **shipping** noise can **outrank** a tighter segment or confuse the answer model.  
-- **Example:** Query *“opened software?”* — at **300** chars, a dedicated sentence on opened software often forms its **own** segment; at **1200** chars, that sentence may be **buried** after unrelated text.
+**User question (HTTP body):**  
+`Can I return opened software?`
 
-#### `max-overlap-chars: 50`
+**Behind the scenes (numbers match defaults in `application.yaml`):**
 
-- **Why:** Copies ~**one clause** across adjacent chunks so a bad boundary does not **delete** the only place the answer appears intact.  
-- **Fixes:** **Split golden sentences** across two chunks with neither ranking well alone.  
-- **Why not `0`:** Cheaper storage, but classic failure: the definitive clause sits **exactly on the cut**.  
-- **Why not `200+`:** Strong safety net but **many more** near-duplicate segments → higher **embed cost** and redundant hits unless MMR/query design compensate.  
-- **Example:** With **50** overlap, *“after day 10 the late fee is $25”* often appears **complete** in at least one of two overlapping chunks; with **0**, one chunk may end mid-clause.
+| Step | What the system does | Beginner takeaway |
+|------|----------------------|-------------------|
+| 1 | **Query expansion** — `gpt-4o-mini` writes **3** paraphrases (fixed in `AiConfig`, not YAML), e.g. “refund for opened software”, “return policy for opened packages”, plus the original. | More chances to **match** wording in the PDF. |
+| 2 | **Dense search** — Each paraphrase is embedded; pgvector returns up to **15** similar segments per query (`initial-max-results`). | Casts a **wide net**; list can be noisy. |
+| 3 | **Fusion (RRF)** — The three ranked lists are merged. Segments that appear **high on several lists** float up. | Reduces bad luck from **one** awkward phrasing. |
+| 4 | **Re-ranking** — Up to **12** fused segments are scored by the LLM with a **JSON array** in `[0,1]` (`rerank-candidate-cap`, batched by **6**). Scoring uses the **original** user sentence (`SimpleRerankingAggregator`). | Fixes “**similar** embedding but **wrong** answer” (e.g. shipping vs returns). |
+| 5 | **MMR** — Pick **3** segments (`max-results`) balancing score and **not repeating** the same idea (`mmr-lambda: 0.5`). | Avoids three near-duplicate chunks in the prompt. |
+| 6 | **Answer** — `gpt-4o-mini` reads those segments + `ChatService` system rules and replies, ideally citing *“Opened software may not be returned.”* | The model **must use retrieved text** as evidence. |
 
----
-
-### B.2 Retrieval — `app.rag.retrieval`
-
-#### `min-score: 0.3`
-
-- **Why:** Drop **very weak** cosine matches so the fused list is not full of barely related paragraphs.  
-- **Fixes:** Obvious junk in the candidate pool (and downstream re-rank cost).  
-- **Why not `0.7`:** Real questions often diverge from doc wording; strict floors yield **empty retrieval** or missing the paragraph that **contains** the answer with only **0.45** similarity.  
-- **Why not `0.05`:** Almost everything passes; re-ranker and context fill with **noise**.  
-- **Example:** A *holiday hours* paragraph at **0.35** similarity to a *return deadline* question: at **0.3** it may still enter the pool (re-rank can demote it); at **0.7** it never appears — good if you want silence, bad if your gold chunk scores **0.55**.
-
-#### `max-results: 3`
-
-- **Why:** Final prompt stays **small** — forces the strongest, most diverse (with MMR) evidence.  
-- **Fixes:** **Context dilution** (model attends to wrong paragraph) and **token cost**.  
-- **Why not `1`:** Single segment misses **exceptions**, **second steps**, or *“see also shipping”* nuances.  
-- **Why not `10`:** Large context → **higher** latency/cost; model may **ignore** the right line or synthesize across conflicting paragraphs.  
-- **Example:** Question needs *rule* + *exception*: **3** slots allow *main rule*, *exception*, *procedure*; **1** drops one leg.
-
-#### `initial-max-results: 15`
-
-- **Why:** When re-ranking is on, each expanded query retrieves a **wider** list so the true answer can sit at **rank 8–12** and still enter the **re-rank cap**.  
-- **Fixes:** **Early rank errors** from vectors alone.  
-- **Why not `< rerank-candidate-cap`:** `AiConfig` startup validation **fails** — invalid.  
-- **Why not `5`:** Pool too small; the correct segment might never appear in **any** of the three lists’ top-5.  
-- **Why not `40`:** Better recall chance but **slower** retrieval and **noisier** fusion; re-rank cap still trims to **12**, so marginal gains past a point go to waste unless you also raise **`rerank-candidate-cap`**.  
-- **Example:** Gold chunk is **#11** on Q2 — with **15** it is retrieved; with **8** it is **invisible** to the pipeline.
+**If re-ranking were disabled** (`reranking.enabled: false`), steps 4–5 shrink: fewer segments come straight from **vector order only** — faster, but easier to get the **wrong** top passages.
 
 ---
 
-### B.3 Re-ranking — `app.rag.reranking`
+### 5.2 `sample_data.json`
 
-#### `enabled: true`
+This file really ships in the repo: `src/main/resources/static/sample_data.json`. The root value is a **JSON object** (not an array), so `DataLoaderImpl` builds **one** `Document` from the **entire file text** (`Document.from(rawJson)`). That string still includes **`project`**, **`events`**, milestone **names**, and **dates**—all searchable after chunking and embedding.
 
-- **Why:** Turn on second-stage **precision** (see Part A).  
-- **Fixes:** Tangential high-vector segments (A.3, A.6).  
-- **Why `false`:** **Lowest latency** and **no** scoring API calls — acceptable if corpus is tiny and vectors are already very clean.  
-- **Example:** With **`false`**, fused vector order goes to the LLM; **shipping** might stay above **opened software** if embeddings say so.
+*(If the root were a **JSON array** of objects, the loader would walk each element and, when an item has a `"project"` field, embed that inner object as text instead—see `documentFromJsonNode` in `DataLoaderImpl`.)*
 
-#### `rerank-candidate-cap: 12`
+**Real excerpt (abbreviated):** the JSON includes events such as **“First Milestone”** on **`2025-10-15`** and **“Final Review”** on **`2025-11-01`**.
 
-- **Why:** Limits how many passages receive **LLM scores** while staying ≥ **`max-results` (3)** and ≤ **`initial-max-results` (15)** (enforced in `AiConfig`).  
-- **Fixes:** Cost/latency vs coverage trade-off.  
-- **Why not `4`:** The right passage might be **fused rank 9** — never scored.  
-- **Why not `30`:** You still only retrieve **15** per query; scoring **30** needs a larger **`initial-max-results`** and more **batches** — much slower.  
-- **Example:** Twelve scored passages ≈ **two** batches of six — predictable cost; thirty scored ≈ **five** batches.
+#### Step A — Ingest
 
-#### `cross-encoder-max-segments-per-call: 6`
+1. **Load** — Same `IngestionRunner` path: JSON is one `Document` among others (plus the PDF).
+2. **Chunk** — With **300** characters, this small JSON often lands in **one or a few** segments; if split, the milestone name and date should still co-exist in at least one segment thanks to overlap.
+3. **Embed** — Each segment gets a vector; both **PDF** and **JSON** chunks live in the **same** pgvector table.
 
-- **Why:** Each LLM call scores **six** passages; prompt and JSON response stay **short**, which pairs with **`max-tokens: 200`** on the chat model.  
-- **Fixes:** **Parse errors** and **truncated** JSON arrays when too many passages are crammed into one completion.  
-- **Why not `2`:** More round-trips for **12** passages → **six** calls instead of **two** → higher latency.  
-- **Why not `15`:** One huge JSON array; higher risk of malformed output or **output cut-off** if `max-tokens` is tight.  
-- **Example:** For **12** segments, batch **6** → **2** API calls; batch **3** → **4** calls.
+#### Step B — Example question
 
-#### `mmr-enabled: true`
+**HTTP body:**  
+`When is the First Milestone?`
 
-- **Why:** Reduce **near-duplicate** segments in the final window.  
-- **Fixes:** Repeated policy text from overlap + FAQ + handbook.  
-- **Why `false`:** If corpus has **no** duplication, MMR adds embedding calls for diversity scoring — you might skip it.
+| Step | What happens (same six steps as §5.1) |
+|------|----------------------------------------|
+| 1 | Paraphrases might mention “next project checkpoint date”, “First Milestone schedule”, etc. |
+| 2–3 | Dense search + RRF surface segments whose text includes **First Milestone** and **`2025-10-15`**. |
+| 4–5 | Re-rank/MMR favour the segment that **explicitly** pairs the milestone name with the date. |
+| 6 | A good answer: **October 15, 2025** (or `2025-10-15`), taken from the retrieved JSON text. |
 
-#### `mmr-lambda: 0.5`
-
-- **Why:** Balanced trade between **relevance** (re-rank score) and **diversity** (embedding distance to chosen set).  
-- **Fixes:** Three copies of the same policy in **`max-results`**.  
-- **Why not `0.95`:** Almost pure relevance → **two** nearly identical top-scored chunks can both survive.  
-- **Why not `0.1`:** Strong diversity → might pick a **lower-scored** chunk just because it is different, **dropping** a highly relevant duplicate that you might have wanted once.  
-- **Example:** `lambda = 0.5` keeps the best-scoring chunk, then prefers the next segment that is **both** reasonably scored **and** not embedding-near-identical to the first.
-
-#### `min-score` (optional, commented in YAML)
-
-- **Why omit:** Trust **ordering** + **`max-results`** + MMR.  
-- **When set (e.g. `0.2`):** Drop passages the LLM judge scored **below** threshold after re-rank.  
-- **Risk:** Aggressive floor → **empty** context if all scores are modest.  
-- **Example:** If all passages get **0.35–0.45** because the question is hard, **`min-score: 0.5`** removes **everything**.
+If the assistant answers *“This query is not in my database.”*, the milestone segment never reached the final prompt — check ingest, **`min-score`**, or chunk boundaries.
 
 ---
 
-### B.4 OpenAI chat model — `langchain4j.open-ai.chat-model`
+### 5.3 `cricket_rules.pdf`
 
-#### `model-name: gpt-4o-mini`
+This file really ships: `src/main/resources/static/cricket_rules.pdf`. `ApacheTikaDocumentParser` turns the binary PDF into **one long plain-text** `Document`, then the same splitter/embedder as everything else.
 
-- **Why:** Cheap enough for **expansion**, **answers**, and **batched scoring** in a POC.  
-- **Fixes:** Single vendor integration for all chat steps.  
-- **Why not a flagship model for everything:** Cost per query scales with **expansion + re-rank batches + answer**; a smaller model is often enough for **scoring JSON**.  
-- **Example:** Re-rank only needs *“output `[0.82, 0.12, …]`”* — `gpt-4o-mini` is sufficient if prompts stay tight.
+**Note:** The exact characters Tika extracts can differ from what you see in a PDF viewer (headers, line breaks). The important part for beginners is: **whatever text Tika produced** is what gets chunked and embedded.
 
-#### `temperature: 0.0`
+#### Step A — Ingest
 
-- **Why:** **Deterministic** paraphrases and scores — easier debugging and reproducible demos.  
-- **Fixes:** Random drift in expansion lines run-to-run.  
-- **Why not `0.7`:** Expansions vary wildly; **retrieval** becomes non-reproducible; harder to compare chunking experiments.
+1. **Load** — PDF → one `Document` in `DataLoaderImpl.loadDocumentsFromPdf()`.
+2. **Chunk** — Many segments of up to **300** characters; laws that are explained over several pages become **many** neighbouring chunks (overlap helps if one law is split).
+3. **Embed** — Same batch embed + `addAll` as §5.1.
 
-#### `max-tokens: 200`
+#### Step B — Example question
 
-- **Why:** Short answers and **small JSON** score arrays fit under **200** output tokens for this POC.  
-- **Fixes:** Caps cost per completion.  
-- **Why not `50`:** Re-ranker expects an array of **six** decimals — a truncated completion returns **neutral pad scores** in `LlmCrossEncoderScoringModel` on parse failure → **degraded** re-ranking.  
-- **Why not `2000`:** Unnecessary for current prompts; slightly encourages verbose model habits if instructions slip.
+**HTTP body (pick any question that should match your PDF):**  
+`What is LBW in cricket?`
 
----
+| Step | What happens (same six steps as §5.1) |
+|------|----------------------------------------|
+| 1 | Expansions might include “leg before wicket explained”, “when is the batter out LBW”, etc. |
+| 2–3 | Each query pulls up to **15** segments; RRF promotes chunks that rank well across **several** phrasings. |
+| 4 | Re-ranking uses the **original** question so a tangential paragraph (e.g. **fielding** only) does not beat the **LBW definition** if both were in the pool. |
+| 5 | MMR avoids returning **three** nearly identical copies of the same law paragraph. |
+| 6 | The model answers from retrieved cricket text only. |
 
-### B.5 OpenAI embedding model — `langchain4j.open-ai.embedding-model`
+**Illustrative segment** (typical of many law-style PDFs; your Tika output may differ slightly):
 
-#### `model-name: text-embedding-3-small`
+> *“Leg before wicket (LBW): the striker is out if the bowler delivers a fair ball, not pitched on the striker’s wicket, that would have hit the wicket but for interception by the striker’s person.”*
 
-- **Why:** Strong cost/quality trade-off for dense RAG at small scale.  
-- **Fixes:** Semantic retrieval without hosting your own embedding server.
-
-#### `dimensions: 512` (must match `app.pgvector.dimension`)
-
-- **Why:** **Reduced dimension** mode for smaller vectors — less storage and faster distance ops for POC.  
-- **Fixes:** Table size and index build time.  
-- **Why not mismatch:** If YAML **`dimensions`** and **`app.pgvector.dimension`** disagree with what the model returns, **ingest or query** will **fail** or corrupt vectors.  
-- **Why not jump to `3072` here without code review:** You must align **LangChain4j embedding config**, **pgvector column**, and **any** precomputed data.
+If your PDF uses different wording, retrieval still works when the **meaning** of the question overlaps the **meaning** of a chunk’s embedding.
 
 ---
 
-### B.6 pgvector store — `app.pgvector`
+## 6. Pipeline step by step (concepts)
 
-#### `dimension: 512`
+The sections below match **Part B** settings. Each has: **idea → problem it fixes → where in code**.
 
-- **Same as B.5** — **must equal** embedding output size used at runtime.
+### 6.1 Chunking
 
-#### Connection fields (`host`, `port`, `database`, `user`, `password`, `table`)
+- **Idea:** Documents are split into **`TextSegment`** pieces before embedding. Size is in **characters**, not tokens.
+- **Fixes:** One giant vector cannot represent a whole manual; small hits align better with specific questions.
+- **Code:** `ChunkingConfig`, `DataTransformerImpl`, `AppRagProperties.Chunking`.
 
-- **Why:** Standard Postgres connectivity; vectors live in **`table`**.  
-- **Not RAG-algorithm choices:** Wrong port → **no retrieval**; wrong table → **empty** or wrong corpus.
+**Tiny example:** If chunks are **too small**, you might retrieve *“Opened soft”* — useless. If **too large**, one vector mixes **returns** and **shipping** and the model picks the wrong focus.
+
+### 6.2 Embeddings + pgvector
+
+- **Idea:** Each segment becomes a **512-dimensional vector** (`text-embedding-3-small` with `dimensions: 512`). Questions get vectors the same way. **pgvector** finds nearest neighbours in SQL.
+- **Fixes:** Users do not need exact keywords from the PDF.
+- **Code:** LangChain4j embedding bean + `AiConfig` builds `PgVectorEmbeddingStore` from **`AppPgVectorProperties`**.
+
+**Must match:** `langchain4j.open-ai.embedding-model.dimensions` and `app.pgvector.dimension` **must be the same**. If not, you get errors or garbage retrieval.
+
+### 6.3 Dense retrieval (limits)
+
+- **Idea:** Similarity is **one number per segment** — fast but sometimes **wrong order** (high score for a tangential paragraph).
+- **Fixes:** Good **recall** (get candidates into the pool).
+- **Code:** `EmbeddingStoreContentRetriever` in `AiConfig`; thresholds from **`AppRagProperties.retrieval()`**.
+
+### 6.4 Query expansion + RRF
+
+- **Idea:** Three paraphrases → three searches → **Reciprocal Rank Fusion** merges lists.
+- **Fixes:** Vocabulary mismatch between user and document.
+- **Code:** `ExpandingQueryTransformer` in `AiConfig`; fusion inside LangChain4j aggregators used by `SimpleRerankingAggregator`.
+
+### 6.5 Re-ranking (LLM scores)
+
+- **Idea:** A second model pass scores **(original question, passage)** together; results are sorted.
+- **Fixes:** **Precision** — the best *answer* paragraph rises even if pure vector search ranked it lower.
+- **Code:** `LlmCrossEncoderScoringModel`, `SimpleRerankingAggregator`.
+
+### 6.6 MMR (diversity)
+
+- **Idea:** When choosing the final **3** segments, penalize chunks that are **embedding-near-duplicates** of ones already chosen.
+- **Fixes:** Wasting the context window on three copies of the same policy sentence.
+- **Code:** `MmrSelector` called from `SimpleRerankingAggregator`.
 
 ---
 
-### B.7 Code constant — expansion count `3`
+## 7. Configuration: every important setting
 
-- **Where:** `new ExpandingQueryTransformer(chatModel, 3)` in `AiConfig`.  
-- **Why three:** Enough **diversity** of phrasing without **tripling** latency beyond reason.  
-- **Why not `1`:** Same as **no expansion** — loses recall from paraphrase.  
-- **Why not `8`:** **Eight retrieval rounds** per user message before fusion — POC cost and latency spike.
+Below: **default → why → what goes wrong if you change it → mini-example**.
+
+### 7.1 `app.rag.chunking` (`AppRagProperties.chunking`)
+
+| Setting | Default | Why this value | If you change it |
+|---------|---------|----------------|------------------|
+| `strategy` | `RECURSIVE` | Splits on natural boundaries (paragraphs, etc.) before forcing max size. | `SENTENCE` can create **many tiny** chunks on bullet-heavy PDFs. |
+| `max-segment-size-chars` | `300` | About **one short idea** per vector — clearer similarity. | **~50** → fragments like half words; **~1200** → one vector mixes many topics; retrieval gets **muddy**. |
+| `max-overlap-chars` | `50` | Repeats ~one clause between neighbours so a bad cut does not **split** the only sentence that answers the question. | **0** → higher risk the golden sentence is **cut in half**; **200+** → more storage and duplicate hits. |
+
+### 7.2 `app.rag.retrieval` (`AppRagProperties.retrieval`)
+
+| Setting | Default | Why | If you change it |
+|---------|---------|-----|------------------|
+| `min-score` | `0.3` | Drops very weak matches so the pool is not pure noise. | **0.7** → you may get **no chunks** if wording differs; **0.05** → almost everything passes. |
+| `max-results` | `3` | Only **three** evidence blocks go to the answer model — focused context. | **1** → may drop an **exception** or second fact; **10** → higher cost and the model may **ignore** the right line. |
+| `initial-max-results` | `15` | When re-ranking is on, each expanded query pulls a **wide** list so rank #11 can still enter the re-rank cap. | **Too small** vs `rerank-candidate-cap` → startup **error** (validated in `AiConfig`). **5** → true answer might **never** be retrieved. |
+
+### 7.3 `app.rag.reranking` (`AppRagProperties.reranking`)
+
+| Setting | Default | Why | If you change it |
+|---------|---------|-----|------------------|
+| `enabled` | `true` | Enables LLM scoring + MMR path. | `false` → **faster**, but order is **vector-only** (more risk of wrong top chunk). |
+| `rerank-candidate-cap` | `12` | Caps how many passages get expensive LLM scores; must be ≤ `initial-max-results` and ≥ `max-results`. | **4** → correct paragraph at fused rank **8** is **never scored**. |
+| `cross-encoder-max-segments-per-call` | `6` | Keeps each scoring response small (works with `max-tokens: 200`). | **15** in one call → higher chance of **truncated JSON** and fallback scores. |
+| `mmr-enabled` | `true` | Reduces duplicate evidence in the final 3. | `false` OK if your corpus has little repetition. |
+| `mmr-lambda` | `0.5` | Balance relevance vs diversity. | **0.95** → almost only relevance → **duplicate** chunks may all win; **0.1** → may pick a **weaker** but “different” chunk. |
+| `min-score` | *(commented out)* | Optional floor on re-rank scores. | If set **too high**, you can remove **all** passages after scoring. |
+
+### 7.4 `app.pgvector` (`AppPgVectorProperties`)
+
+| Field | Role |
+|-------|------|
+| `host`, `port`, `database`, `user`, `password` | Normal Postgres login. |
+| `table` | Table storing vectors + text metadata. |
+| `dimension` | **Must equal** embedding model output size (**512** here). |
+
+### 7.5 `langchain4j.open-ai` (starter config)
+
+| Setting | Default | Role |
+|---------|---------|------|
+| `chat-model.model-name` | `gpt-4o-mini` | Paraphrases, re-rank JSON scores, final answer. |
+| `chat-model.temperature` | `0.0` | Stable, repeatable behaviour for demos. |
+| `chat-model.max-tokens` | `200` | Cap output length; **too low** can break JSON scoring arrays. |
+| `embedding-model.model-name` | `text-embedding-3-small` | Vectors for segments and queries. |
+| `embedding-model.dimensions` | `512` | Must match **`app.pgvector.dimension`**. |
+
+### 7.6 Java constant (not in YAML)
+
+| Constant | Value | Where | Why |
+|----------|-------|-------|-----|
+| Query expansion count | **3** | `AiConfig` → `ExpandingQueryTransformer(chatModel, 3)` | More paraphrases = more retrieval **cost**; three is a common POC balance. |
 
 ---
 
-## Part C — Quick reference tables
+## 8. Quick reference table
 
 | YAML path | Default | Role |
 |-----------|---------|------|
-| `app.rag.chunking.strategy` | `RECURSIVE` | How to split before size cap. |
+| `app.rag.chunking.strategy` | `RECURSIVE` | Split strategy. |
 | `app.rag.chunking.max-segment-size-chars` | `300` | Max chunk length (chars). |
 | `app.rag.chunking.max-overlap-chars` | `50` | Overlap between neighbours. |
 | `app.rag.retrieval.min-score` | `0.3` | Minimum cosine similarity for a hit. |
-| `app.rag.retrieval.max-results` | `3` | Segments passed to answer prompt after post-processing. |
-| `app.rag.retrieval.initial-max-results` | `15` | Per-query pool when re-ranking on. |
-| `app.rag.reranking.enabled` | `true` | Enable LLM re-rank + MMR path. |
+| `app.rag.retrieval.max-results` | `3` | Segments in the final answer prompt. |
+| `app.rag.retrieval.initial-max-results` | `15` | Per-query pool when re-ranking is on. |
+| `app.rag.reranking.enabled` | `true` | LLM re-rank + MMR path. |
 | `app.rag.reranking.cross-encoder-max-segments-per-call` | `6` | Passages per scoring API call. |
 | `app.rag.reranking.rerank-candidate-cap` | `12` | Max passages scored after fusion. |
 | `app.rag.reranking.mmr-enabled` | `true` | Diversity on final pick. |
-| `app.rag.reranking.mmr-lambda` | `0.5` | Relevance vs diversity weight. |
-| `langchain4j.open-ai.chat-model.*` | `gpt-4o-mini`, `0.0`, `200` | Chat for expand / answer / score. |
-| `langchain4j.open-ai.embedding-model.*` | `text-embedding-3-small`, `512` | Embeddings for segments + queries. |
-| `app.pgvector.dimension` | `512` | Store dimension — match embeddings. |
+| `app.rag.reranking.mmr-lambda` | `0.5` | Relevance vs diversity. |
+| `langchain4j.open-ai.chat-model.*` | `gpt-4o-mini`, `0.0`, `200` | Chat model. |
+| `langchain4j.open-ai.embedding-model.*` | `text-embedding-3-small`, `512` | Embeddings. |
+| `app.pgvector.dimension` | `512` | Vector column size — match embeddings. |
 
 ---
 
-## Part D — Where to read the code
+## 9. Where to read the code
 
 | Topic | Files |
 |-------|--------|
-| Chunking | `ChunkingConfig.java`, `AppRagProperties.java` (`chunking`), `ChunkingStrategy.java`, `DataTransformerImpl.java` |
-| Store, retriever, augmentor | `AiConfig.java`, `AppRagProperties.java`, `AppPgVectorProperties.java` |
-| LLM scoring | `LlmCrossEncoderScoringModel.java` |
-| Re-rank, MMR, original query | `SimpleRerankingAggregator.java` |
-| Ingest | `IngestionRunner.java`, `EmbeddingStoreHelper.java` |
-| API | `ChatController.java`, `ChatService.java` |
-| App entry | `SpringAiRagApplication.java` |
+| **RAG wiring** (store, retriever, augmentor) | `AiConfig.java`, `AppRagProperties.java`, `AppPgVectorProperties.java` |
+| **Chunking** | `ChunkingConfig.java`, `ChunkingStrategy.java`, `DataTransformerImpl.java` |
+| **LLM passage scores** | `LlmCrossEncoderScoringModel.java` |
+| **Re-rank + MMR + original user query** | `SimpleRerankingAggregator.java`, `MmrSelector.java` |
+| **Ingest on startup** | `IngestionRunner.java`, `EmbeddingStoreHelper.java`, `DataLoaderImpl.java` |
+| **HTTP API** | `ChatController.java`, `ChatService.java` |
+| **Application entry** | `SpringAiRagApplication.java` |
+
+---
+
+## 10. Glossary
+
+| Term | Meaning |
+|------|---------|
+| **RAG** | Retrieve evidence from *your* data, add it to the prompt, then generate an answer. |
+| **Embedding** | A fixed-length vector of numbers representing text meaning for similarity search. |
+| **Segment / chunk** | A small piece of text cut from a document; one retrieval unit. |
+| **pgvector** | Postgres extension storing vectors and supporting “nearest neighbour” queries. |
+| **Retriever** | Component that runs embedding search and returns candidate segments. |
+| **Re-ranking** | Second pass that scores how well each **candidate** answers the **question** (here: LLM JSON scores). |
+| **MMR** | Maximal Marginal Relevance — pick relevant passages but avoid **near-duplicate** text. |
+| **Token vs character** | Chunk settings here are **characters**. Token counts depend on the model tokenizer; do not confuse the two when tuning. |
+
+---
+
+## Tips if something looks “odd”
+
+1. **Empty answers** — Check Postgres is running, table has rows after ingest, and `min-score` is not too high.
+2. **Startup exception about rerank cap** — When `reranking.enabled` is true, you need **`initial-max-results` ≥ `rerank-candidate-cap` ≥ `max-results`**. Fix numbers in YAML.
+3. **Wrong answers with high confidence** — Often **retrieval** put weak chunks first; try re-ranking on, widen `initial-max-results`, or tune chunk size.
+4. **Logs** — LangChain4j can log OpenAI requests/responses (`log-requests` / `log-responses` in YAML); useful to see expansion and scoring, but **do not** enable in production with real user data without redaction.
+
+Examples in this document are **invented** for teaching; tune on **your** documents and questions.
