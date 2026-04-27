@@ -1,6 +1,5 @@
 package com.hs.spring_ai_rag.bootstrap;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.boot.CommandLineRunner;
@@ -17,7 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Loads PDF/JSON from the classpath, splits into segments, and embeds into the store when it is empty.
+ * On first startup (empty embedding table): loads the POC knowledge base, splits, embeds, and stores vectors.
  */
 @Slf4j
 @Component
@@ -35,7 +34,7 @@ public class IngestionRunner implements CommandLineRunner {
 			return;
 		}
 
-		List<Document> documents = loadAllDocuments();
+		List<Document> documents = dataLoader.loadDocuments();
 		log.info("Loaded {} document(s).", documents.size());
 
 		List<TextSegment> segments = dataTransformer.transform(documents);
@@ -43,12 +42,5 @@ public class IngestionRunner implements CommandLineRunner {
 
 		embeddingStoreHelper.embedAndStore(segments);
 		log.info("Ingest pipeline finished.");
-	}
-
-	private List<Document> loadAllDocuments() {
-		List<Document> all = new ArrayList<>();
-		all.addAll(dataLoader.loadDocumentsFromPdf());
-		all.addAll(dataLoader.loadDocumentsFromJson());
-		return all;
 	}
 }

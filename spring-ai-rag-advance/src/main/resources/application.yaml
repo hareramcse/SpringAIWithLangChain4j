@@ -17,7 +17,17 @@ langchain4j:
       dimensions: 512
 
 app:
+  eval:
+    # Set true only locally to expose POST /eval/run (uses OpenAI like /chat). Cases: separate JSON from ingest corpus.
+    http-enabled: false
+    dataset-resource: "classpath:eval/golden-set.json"
   rag:
+    guardrail:
+      # When reranking is on: if max RERANKED_SCORE among final chunks is below min-rerank-score, no excerpts are sent (model should reply with no-evidence-message).
+      enabled: true
+      min-rerank-score: 0.22
+      # Must match RagGuardrailMessages.NO_EVIDENCE_RESPONSE unless you change that constant too.
+      no-evidence-message: "Not found in documents"
     retrieval:
       min-score: 0.3
       # Final number of chunks passed to the chat model after re-rank + optional MMR.
@@ -51,3 +61,8 @@ app:
     password: password
     table: langchain4j_embeddings
     dimension: 512
+    # STORED generated tsvector + GIN (see PgVectorGeneratedFtsInitializer). Use "simple" for IDs/codes; "english" for stemming.
+    text-search-config: simple
+    tsv-column: text_tsv
+    hybrid-retrieval: true
+    rrf-k: 60

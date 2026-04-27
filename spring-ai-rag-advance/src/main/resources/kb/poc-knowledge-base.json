@@ -1,0 +1,30 @@
+{
+	"description": "POC corpus for ingest only (vectors + text). Evaluation cases live separately under classpath:eval/golden-set.json.",
+	"documents": [
+		{
+			"id": "returns-policy",
+			"title": "Returns and refunds",
+			"body": "Opened software may not be returned once the license key has been revealed. Unopened physical items may be returned within 30 days of delivery for a full refund. Refunds are issued to the original payment method within 5 business days after we receive the item. If you received the wrong item, contact support with your order number and we will send a prepaid return label."
+		},
+		{
+			"id": "warranty-sku",
+			"title": "Warranty exceptions by product",
+			"body": "Most electronics carry a 24-month limited warranty. The extended warranty SKU-9922-B is non-transferable and only applies to the original purchaser. Register SKU-9922-B within 14 days of purchase at the warranty portal. Failure to register voids extended coverage but the standard 24-month warranty still applies."
+		},
+		{
+			"id": "support-tickets",
+			"title": "Support ticket handling",
+			"body": "All escalations must reference an internal case id. For hardware swap approvals use case id CASE-POC-7741 in your email subject so routing automation picks it up. Generic complaints without a case id are queued for manual triage and may take up to 72 hours."
+		},
+		{
+			"id": "shipping-zones",
+			"title": "Shipping and zones",
+			"body": "We ship to Zone A and Zone B only. Zone A orders leave the east coast hub; Zone B orders leave the west coast hub. Transit times are estimates and do not affect return windows, which are based on delivery timestamp. Oversized items may incur a surcharge not shown at checkout."
+		},
+		{
+			"id": "rma-process",
+			"title": "RMA process",
+			"body": "To start a return merchandise authorization (RMA), log in and open Orders then select Request RMA. You will receive an RMA number by email. The RMA window is 14 days from approval; after that the RMA expires and you must request a new one. Pack the item with the RMA sheet visible on the outside of the box."
+		}
+	]
+}

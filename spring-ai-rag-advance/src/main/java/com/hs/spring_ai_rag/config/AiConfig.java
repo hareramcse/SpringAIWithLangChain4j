@@ -3,7 +3,11 @@ package com.hs.spring_ai_rag.config;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hs.spring_ai_rag.rag.GatingRetrievalAugmentor;
+import com.hs.spring_ai_rag.rag.HybridPgVectorContentRetriever;
 import com.hs.spring_ai_rag.rag.LlmCrossEncoderScoringModel;
 import com.hs.spring_ai_rag.rag.SimpleRerankingAggregator;
 
@@ -22,14 +26,16 @@ import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.pgvector.PgVectorEmbeddingStore;
 
 /**
- * RAG wiring: pgvector retrieval, query expansion, optional LLM re-rank + MMR.
+ * Central RAG wiring: embedding store, dense/hybrid retriever, query expansion, re-rank + MMR, confidence guardrail.
  */
 @Configuration
-@EnableConfigurationProperties({AppRagProperties.class, AppPgVectorProperties.class})
+@EnableConfigurationProperties({AppRagProperties.class, AppPgVectorProperties.class, AppEvalProperties.class})
 public class AiConfig {
 
 	/** Paraphrases from {@link ExpandingQueryTransformer}; not bound from YAML in this project. */
 	private static final int QUERY_EXPANSION_VARIANTS = 3;
+
+	// --- Storage ---
 
 	@Bean
 	public EmbeddingStore<TextSegment> embeddingStore(AppPgVectorProperties pg) {
@@ -45,19 +51,23 @@ public class AiConfig {
 				.build();
 	}
 
-	@Bean
-	public ScoringModel crossEncoderScoringModel(ChatModel chatModel, AppRagProperties rag) {
-		return new LlmCrossEncoderScoringModel(chatModel, rag.reranking().crossEncoderMaxSegmentsPerCall());
-	}
+	// --- Candidate retrieval (dense vector and optional hybrid FTS) ---
 
 	@Bean
 	public ContentRetriever contentRetriever(
 			EmbeddingStore<TextSegment> embeddingStore,
 			EmbeddingModel embeddingModel,
+			JdbcClient pgVectorJdbcClient,
+			ObjectMapper objectMapper,
+			AppPgVectorProperties pg,
 			AppRagProperties rag) {
 		assertRetrievalPoolValid(rag);
 		var retrieval = rag.retrieval();
 		int pool = rag.reranking().enabled() ? retrieval.initialMaxResults() : retrieval.maxResults();
+		if (pg.hybridRetrieval()) {
+			return new HybridPgVectorContentRetriever(
+					embeddingStore, embeddingModel, pgVectorJdbcClient, objectMapper, pg, rag, pool);
+		}
 		return EmbeddingStoreContentRetriever.builder()
 				.embeddingStore(embeddingStore)
 				.embeddingModel(embeddingModel)
@@ -65,6 +75,15 @@ public class AiConfig {
 				.minScore(retrieval.minScore())
 				.build();
 	}
+
+	// --- Re-ranking model (LLM scores passages) ---
+
+	@Bean
+	public ScoringModel crossEncoderScoringModel(ChatModel chatModel, AppRagProperties rag) {
+		return new LlmCrossEncoderScoringModel(chatModel, rag.reranking().crossEncoderMaxSegmentsPerCall());
+	}
+
+	// --- Retrieval augmentor (expand → retrieve → fuse → re-rank/MMR → guardrail) ---
 
 	@Bean
 	public RetrievalAugmentor retrievalAugmentor(
@@ -84,11 +103,12 @@ public class AiConfig {
 						clampToUnitInterval(reranking.mmrLambda()),
 						embeddingModel)
 				: new DefaultContentAggregator();
-		return DefaultRetrievalAugmentor.builder()
+		var augmentor = DefaultRetrievalAugmentor.builder()
 				.contentRetriever(contentRetriever)
 				.queryTransformer(new ExpandingQueryTransformer(chatModel, QUERY_EXPANSION_VARIANTS))
 				.contentAggregator(aggregator)
 				.build();
+		return new GatingRetrievalAugmentor(augmentor, rag);
 	}
 
 	private static void assertRetrievalPoolValid(AppRagProperties rag) {
