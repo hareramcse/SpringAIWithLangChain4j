@@ -1,0 +1,101 @@
+{
+  "description": "Offline golden eval.",
+  "cases": [
+    {
+      "id": "returns-opened-software-key-revealed",
+      "question": "Can I return opened software after the license key has been revealed?",
+      "answerMustContain": ["Opened software may not be returned", "license key"],
+      "answerMustNotContain": ["lifetime money-back", "90-day software return"]
+    },
+    {
+      "id": "returns-unopened-30-days",
+      "question": "How long do I have to return an unopened physical item?",
+      "answerMustContain": ["30 days", "delivery"],
+      "answerMustNotContain": ["90 days", "lifetime"]
+    },
+    {
+      "id": "refund-timing-business-days",
+      "question": "How soon will I get a refund after you receive my return?",
+      "answerMustContain": ["5 business days", "original payment"],
+      "answerMustNotContain": ["same day", "instant refund guarantee"]
+    },
+    {
+      "id": "warranty-sku-registration-window",
+      "question": "How long do I have to register extended warranty SKU-9922-B?",
+      "answerMustContain": ["14 days", "SKU-9922-B", "warranty portal"],
+      "answerMustNotContain": ["30 days to register", "transferable"]
+    },
+    {
+      "id": "warranty-standard-duration",
+      "question": "How long is the standard limited warranty on most electronics?",
+      "answerMustContain": ["24-month", "limited warranty"],
+      "answerMustNotContain": ["lifetime warranty", "5 year standard"]
+    },
+    {
+      "id": "support-case-hardware-swap-subject",
+      "question": "What case id should I put in the email subject for hardware swap approvals?",
+      "answerMustContain": ["CASE-POC-7741", "subject"],
+      "answerMustNotContain": ["CASE-9999", "do not include"]
+    },
+    {
+      "id": "support-generic-queue-delay",
+      "question": "How long can first reply take if I email without a case id?",
+      "answerMustContain": ["72 hours", "manual triage"],
+      "answerMustNotContain": ["within 1 hour guaranteed"]
+    },
+    {
+      "id": "shipping-zones-only",
+      "question": "Which shipping zones do you deliver to?",
+      "answerMustContain": ["Zone A", "Zone B"],
+      "answerMustNotContain": ["Zone C", "worldwide shipping"]
+    },
+    {
+      "id": "shipping-hubs-east-west",
+      "question": "Where do Zone A and Zone B orders ship from?",
+      "answerMustContain": ["east coast hub", "west coast hub"],
+      "answerMustNotContain": ["Chicago hub only"]
+    },
+    {
+      "id": "rma-window-after-approval",
+      "question": "How many days do I have to ship my return after RMA approval?",
+      "answerMustContain": ["14 days", "RMA"],
+      "answerMustNotContain": ["30 days from approval", "60-day RMA window"]
+    },
+    {
+      "id": "rma-packaging-visible-sheet",
+      "question": "How should I pack an RMA shipment?",
+      "answerMustContain": ["RMA sheet", "outside of the box"],
+      "answerMustNotContain": ["no paperwork needed"]
+    },
+    {
+      "id": "wrong-item-prepaid-label",
+      "question": "What happens if I received the wrong item?",
+      "answerMustContain": ["wrong item", "prepaid return label"],
+      "answerMustNotContain": ["keep both items free"]
+    },
+    {
+      "id": "clearance-final-sale",
+      "question": "Are clearance items marked Final Sale returnable?",
+      "answerMustContain": ["Final Sale", "not returnable"],
+      "answerMustNotContain": ["full refund on Final Sale"]
+    },
+    {
+      "id": "payments-major-cards",
+      "question": "What payment methods do you accept at checkout?",
+      "answerMustContain": ["cards", "checkout"],
+      "answerMustNotContain": ["cryptocurrency only", "cash on delivery only"]
+    },
+    {
+      "id": "software-device-limit-standard",
+      "question": "How many devices can I activate software on with a standard consumer account?",
+      "answerMustContain": ["devices"],
+      "answerMustNotContain": ["unlimited devices", "ten devices"]
+    },
+    {
+      "id": "logs-retention-90-days",
+      "question": "How long are diagnostic logs that I upload kept?",
+      "answerMustContain": ["90 days"],
+      "answerMustNotContain": ["7 days", "forever"]
+    }
+  ]
+}

@@ -11,12 +11,7 @@ import com.hs.spring_ai_rag.config.AppChatSafetyProperties;
 
 import dev.langchain4j.model.chat.ChatModel;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
-/**
- * Post guard: response length, regex leak screens, optional LLM judge for likely hallucination / unsafe replies.
- */
-@Slf4j
 @Component
 @RequiredArgsConstructor
 public final class ResponsePostGuardrail {
@@ -29,26 +24,23 @@ public final class ResponsePostGuardrail {
 	private final AppChatSafetyProperties props;
 	private final ChatModel chatModel;
 
-	/**
-	 * @return the assistant text to return (possibly unchanged); may throw {@link UnsafeResponseException}
-	 */
 	public String validate(String userQuery, String assistantReply) {
 		if (!props.isEnabled()) {
 			return assistantReply;
 		}
 		if (assistantReply == null) {
-			return handleFailure("Empty assistant response.");
+			return handleFailure();
 		}
 		if (assistantReply.length() > props.getMaxResponseChars()) {
-			return handleFailure("Response exceeds maximum length.");
+			return handleFailure();
 		}
 		for (Pattern p : mergeResponsePatterns()) {
 			if (p.matcher(assistantReply).find()) {
-				return handleFailure("Response matched a blocked pattern.");
+				return handleFailure();
 			}
 		}
 		if (props.isPostLlmJudgeEnabled() && !passesLlmGroundingJudge(userQuery, assistantReply)) {
-			return handleFailure("Response failed hallucination safety review.");
+			return handleFailure();
 		}
 		return assistantReply;
 	}
@@ -66,43 +58,28 @@ public final class ResponsePostGuardrail {
 
 	private boolean passesLlmGroundingJudge(String userQuery, String assistantReply) {
 		String prompt = """
-				You review assistant answers for a retrieval-only FAQ bot. The assistant must NOT invent policies, SKUs, prices, or legal facts.
-				Reply with exactly one word: SAFE if the answer is cautious and consistent with only quoting or summarizing generic guidance without fabricated specifics, or UNSAFE if it states concrete facts that could be fabricated.
+				Classify the assistant answer for FAQ grounding. Reply SAFE or UNSAFE only.
 
-				USER_QUESTION:
-				%s
-
-				ASSISTANT_ANSWER:
-				%s
+				Q: %s
+				A: %s
 				"""
 				.formatted(userQuery.replace("###", ""), assistantReply.replace("###", ""));
 		try {
 			String verdict = chatModel.chat(prompt).trim();
 			String firstLine = verdict.lines().findFirst().orElse("").trim().toUpperCase(Locale.ROOT);
 			if (firstLine.contains("UNSAFE")) {
-				log.warn("LLM judge marked response UNSAFE.");
 				return false;
 			}
-			if (firstLine.contains("SAFE")) {
-				return true;
-			}
-			log.warn("LLM judge unclear verdict ({}); treating as unsafe.", truncate(verdict, 120));
-			return false;
+			return firstLine.contains("SAFE");
 		} catch (Exception e) {
-			log.warn("LLM judge failed; treating as unsafe: {}", e.toString());
 			return false;
 		}
 	}
 
-	private String truncate(String s, int max) {
-		return s.length() <= max ? s : s.substring(0, max) + "...";
-	}
-
-	private String handleFailure(String reason) {
-		log.warn("Post-LLM guardrail: {}", reason);
+	private String handleFailure() {
 		if (!props.isRejectUnsafeResponseWithError()) {
 			return props.getUnsafeResponseFallback();
 		}
-		throw new UnsafeResponseException(reason);
+		throw new UnsafeResponseException("Rejected.");
 	}
 }

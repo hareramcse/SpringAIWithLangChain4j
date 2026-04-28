@@ -14,7 +14,7 @@ class KnowledgeBasePayloadParsingTest {
 		try (var in = getClass().getResourceAsStream("/kb/poc-knowledge-base.json")) {
 			KnowledgeBasePayload payload = mapper.readValue(in, KnowledgeBasePayload.class);
 			assertThat(payload.description()).contains("POC");
-			assertThat(payload.documents()).hasSize(5);
+			assertThat(payload.documents()).hasSize(8);
 			assertThat(payload.documents().getFirst().id()).isEqualTo("returns-policy");
 			assertThat(payload.documents().getFirst().toLangChain4jDocument().text()).contains("Returns and refunds");
 		}

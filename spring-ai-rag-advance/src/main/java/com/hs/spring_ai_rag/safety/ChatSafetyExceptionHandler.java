@@ -19,7 +19,7 @@ public final class ChatSafetyExceptionHandler {
 
 	@ExceptionHandler(UnsafeResponseException.class)
 	public ResponseEntity<Map<String, String>> unsafeResponse(UnsafeResponseException e) {
-		return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).contentType(MediaType.APPLICATION_JSON)
+		return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT).contentType(MediaType.APPLICATION_JSON)
 				.body(Map.of("error", e.getMessage()));
 	}
 }

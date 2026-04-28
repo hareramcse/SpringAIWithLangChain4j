@@ -26,14 +26,10 @@ import dev.langchain4j.rag.query.Query;
 import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 /**
- * Hybrid retrieval: dense pgvector and FTS each run with their own limits; results are merged with distinct chunk
- * text (vector order first, then keyword-only rows). Downstream {@link dev.langchain4j.rag.content.aggregator.ReRankingContentAggregator}
- * performs re-ranking when enabled.
+ * Hybrid retrieval (dense + FTS merge). Re-ranking runs in the aggregator when enabled.
  */
-@Slf4j
 @RequiredArgsConstructor
 public final class HybridPgVectorContentRetriever implements ContentRetriever {
 
@@ -135,20 +131,17 @@ public final class HybridPgVectorContentRetriever implements ContentRetriever {
 
 	private static void requireSqlIdentifier(String name, String value) {
 		if (value == null || !SQL_IDENTIFIER.matcher(value).matches()) {
-			throw new IllegalArgumentException("Invalid SQL identifier for " + name + ": " + value);
+			throw new IllegalArgumentException("invalid identifier");
 		}
 	}
 
 	private static void requireRegconfig(String textSearchConfig) {
 		if (textSearchConfig == null || textSearchConfig.isBlank()) {
-			throw new IllegalArgumentException(
-					"Invalid PostgreSQL text search configuration: value is null or blank. Set app.pgvector.text-search-config "
-							+ "to a built-in name such as 'simple' or 'english' (not the embeddings table name).");
+			throw new IllegalArgumentException("invalid text-search-config");
 		}
 		String normalized = textSearchConfig.trim().toLowerCase(Locale.ROOT);
 		if (!ALLOWED_TEXT_SEARCH_CONFIGS.contains(normalized)) {
-			throw new IllegalArgumentException("Invalid app.pgvector.text-search-config: '" + textSearchConfig
-					+ "'. Use a built-in PostgreSQL text search configuration (e.g. simple, english).");
+			throw new IllegalArgumentException("invalid text-search-config");
 		}
 	}
 
@@ -176,7 +169,6 @@ public final class HybridPgVectorContentRetriever implements ContentRetriever {
 			Map<String, Object> map = objectMapper.readValue(json, new TypeReference<>() {});
 			return Metadata.from(map);
 		} catch (Exception e) {
-			log.debug("Could not parse metadata JSON, using empty metadata: {}", e.toString());
 			return Metadata.from(Map.of());
 		}
 	}

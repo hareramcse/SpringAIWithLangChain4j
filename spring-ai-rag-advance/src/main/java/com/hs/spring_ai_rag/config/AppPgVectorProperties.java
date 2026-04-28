@@ -28,7 +28,7 @@ public class AppPgVectorProperties {
 	/** When true: run dense pgvector and FTS, merge distinct chunks, then downstream re-ranking (if enabled). */
 	private boolean hybridRetrieval = true;
 	/** Max dense hits per request before merging with FTS (each leg runs independently). */
-	private int hybridVectorMaxResults = 5;
+	private int hybridVectorMaxResults = 3;
 	/** Max FTS hits per request before merging with dense hits. */
-	private int hybridKeywordMaxResults = 5;
+	private int hybridKeywordMaxResults = 3;
 }

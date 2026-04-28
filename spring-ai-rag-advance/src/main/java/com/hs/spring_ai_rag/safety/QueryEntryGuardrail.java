@@ -9,12 +9,7 @@ import org.springframework.stereotype.Component;
 import com.hs.spring_ai_rag.config.AppChatSafetyProperties;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
-/**
- * Entry guard: length limits and regex screens for prompt-injection / instruction override attempts.
- */
-@Slf4j
 @Component
 @RequiredArgsConstructor
 public final class QueryEntryGuardrail {
@@ -36,17 +31,15 @@ public final class QueryEntryGuardrail {
 			return;
 		}
 		if (userQuery == null || userQuery.isBlank()) {
-			throw new UnsafeQueryException("Query must not be empty.");
+			throw new UnsafeQueryException("Empty query.");
 		}
 		if (userQuery.length() > props.getMaxQueryChars()) {
-			throw new UnsafeQueryException(
-					"Query exceeds maximum length (" + props.getMaxQueryChars() + " characters).");
+			throw new UnsafeQueryException("Query too long.");
 		}
 		List<Pattern> patterns = mergePatterns();
 		for (Pattern p : patterns) {
 			if (p.matcher(userQuery).find()) {
-				log.warn("Blocked query matching safety pattern.");
-				throw new UnsafeQueryException("Query was blocked by safety rules.");
+				throw new UnsafeQueryException("Blocked.");
 			}
 		}
 	}

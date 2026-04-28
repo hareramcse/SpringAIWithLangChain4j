@@ -1,30 +1,45 @@
 {
-	"description": "POC corpus for ingest only (vectors + text).",
+	"description": "Expanded POC corpus for ingest (vectors + text). Longer articles improve retrieval surface area and answer grounding.",
 	"documents": [
 		{
 			"id": "returns-policy",
-			"title": "Returns and refunds",
-			"body": "Opened software may not be returned once the license key has been revealed. Unopened physical items may be returned within 30 days of delivery for a full refund. Refunds are issued to the original payment method within 5 business days after we receive the item. If you received the wrong item, contact support with your order number and we will send a prepaid return label."
+			"title": "Returns and refunds — full policy",
+			"body": "GENERAL. Most purchases may be returned subject to the rules below. Refunds go to the original payment method unless prohibited by law or card issuer rules. Gift recipients receive store credit when the original payment cannot be reversed.\n\nSOFTWARE AND DIGITAL GOODS. Opened software may not be returned once the license key has been revealed or downloaded and activated. Digital subscriptions follow the cancellation rules shown at checkout; unused prepaid periods may be credited per subscription terms. Software marked Download Immediately is treated as delivered at purchase.\n\nPHYSICAL GOODS — UNOPENED. Unopened physical items may be returned within 30 days of the delivery timestamp shown in tracking. The item must be in original manufacturer packaging with seals intact. Opened but defective items are handled under the warranty and RMA process, not as a no-questions return.\n\nPHYSICAL GOODS — OPENED. Opened non-defective items are not returnable except where local law requires. If you received the wrong item, or the item is damaged in transit, contact support with your order number; we will send a prepaid return label and replace or refund as applicable.\n\nREFUND TIMING. After we receive and inspect the return, refunds are issued to the original payment method within 5 business days. Bank processing can add several days before the credit appears. Store credit, if used, is applied to your account within 1 business day of approval.\n\nRESTOCKING. Some categories (e.g. large appliances) may incur a restocking fee as disclosed on the product page. If no fee is listed, none applies for that SKU.\n\nEXCLUSIONS. Clearance items marked Final Sale, consumables that have been opened, and items without proof of purchase are not returnable. B2B purchase orders follow the contract terms on the signed order form if they differ from this page."
 		},
 		{
 			"id": "warranty-sku",
-			"title": "Warranty exceptions by product",
-			"body": "Most electronics carry a 24-month limited warranty. The extended warranty SKU-9922-B is non-transferable and only applies to the original purchaser. Register SKU-9922-B within 14 days of purchase at the warranty portal. Failure to register voids extended coverage but the standard 24-month warranty still applies."
+			"title": "Warranty — standard and extended (SKU-9922-B)",
+			"body": "STANDARD LIMITED WARRANTY. Most electronics sold here carry a 24-month limited warranty from the date of retail purchase against defects in materials and workmanship under normal use. Warranty covers repair, replacement, or refund at our discretion. Cosmetic wear, accidental damage, and unauthorized modifications void coverage unless you purchased a separate damage plan where offered.\n\nEXTENDED WARRANTY SKU-9922-B. The extended warranty plan SKU-9922-B adds coverage beyond the standard 24 months as described on the plan page. SKU-9922-B is non-transferable and applies only to the original purchaser named on the invoice. Registration of SKU-9922-B is mandatory within 14 days of purchase through the warranty portal; late registration may reduce benefits. Failure to register voids extended coverage only; the standard 24-month warranty still applies to eligible defects.\n\nPROOF AND SERVICE. Keep your receipt or order confirmation. Warranty service requires either the serial number registered to your account or a valid proof of purchase. On-site service is limited to eligible ZIP codes listed in the service locator.\n\nTHIRD-PARTY ITEMS. Accessories from other brands may carry the manufacturer warranty only; check the insert in the box."
 		},
 		{
 			"id": "support-tickets",
-			"title": "Support ticket handling",
-			"body": "All escalations must reference an internal case id. For hardware swap approvals use case id CASE-POC-7741 in your email subject so routing automation picks it up. Generic complaints without a case id are queued for manual triage and may take up to 72 hours."
+			"title": "Support escalations and case IDs",
+			"body": "CASE IDS AND ROUTING. All escalations must reference an internal case id so our CRM can attach history. Create a case before emailing unless your portal ticket already shows an id. For hardware swap approvals, include case id CASE-POC-7741 in the email subject line exactly so routing automation assigns it to the hardware approvals queue. Messages without that token may be delayed.\n\nRESPONSE TIMES. Priority 1 (production down for eligible products): initial response within 4 business hours. Priority 2: within 1 business day. Generic complaints without a case id are queued for manual triage and may take up to 72 hours for first reply.\n\nATTACHMENTS. Log bundles under 15 MB may be attached; larger uploads use the secure link generated in the portal. Do not send passwords or secrets in email; use the secret-sharing flow linked from the ticket.\n\nAFTER HOURS. Weekend and holiday coverage is limited to Sev1 for contracted enterprise customers only; others receive next-business-day follow-up."
 		},
 		{
 			"id": "shipping-zones",
-			"title": "Shipping and zones",
-			"body": "We ship to Zone A and Zone B only. Zone A orders leave the east coast hub; Zone B orders leave the west coast hub. Transit times are estimates and do not affect return windows, which are based on delivery timestamp. Oversized items may incur a surcharge not shown at checkout."
+			"title": "Shipping zones, hubs, and surcharges",
+			"body": "SERVICE AREA. We ship to Zone A and Zone B only within the regions listed at checkout. Entering a supported postal code is required before rates display. We do not ship to P.O. boxes for oversized freight.\n\nHUBS. Zone A orders ship from the east coast hub (see tracking origin ECC-HUB). Zone B orders ship from the west coast hub (origin WCC-HUB). Split shipments can occur when inventory is balanced between hubs; you may receive multiple tracking numbers.\n\nTIMING. Published transit times are estimates, not guarantees, unless you purchased a guaranteed delivery upgrade where offered. Weather and carrier delays are outside our control; notify us if a guaranteed shipment misses the window for remedy eligibility.\n\nRETURNS AND DELIVERY DATE. Return windows are based on the delivery timestamp on the carrier scan, not on the ship date. If tracking shows delivered but you did not receive the package, open a case within 48 hours.\n\nSURCHARGES. Oversized items may incur a surcharge not shown at checkout until dimensions are verified at pick; you will be notified before capture when possible. Fuel and rural surcharges follow the carrier table linked from the cart."
 		},
 		{
 			"id": "rma-process",
-			"title": "RMA process",
-			"body": "To start a return merchandise authorization (RMA), log in and open Orders then select Request RMA. You will receive an RMA number by email. The RMA window is 14 days from approval; after that the RMA expires and you must request a new one. Pack the item with the RMA sheet visible on the outside of the box."
+			"title": "RMA — return merchandise authorization",
+			"body": "STARTING AN RMA. Log in, open Orders, select Request RMA on the eligible line item. Answer the wizard questions; incomplete answers pause the ticket. You will receive an RMA number by email once approved—save it on the packing slip.\n\nWINDOW. The RMA shipment window is 14 days from approval. After that the RMA expires and you must submit a new request if returns are still allowed under the returns policy. Extensions require supervisor approval and are only granted for carrier outages documented with tracking.\n\nPACKAGING. Pack the item with the RMA sheet visible on the outside of the box. Use outer packaging for heavy items; bare product boxes often arrive damaged and may void refund eligibility for condition reasons.\n\nINSPECTION. Refused or counterfeit items are documented and returned at sender expense where permitted by law. Serial numbers must match the original shipment unless we authorized a substitution in writing."
+		},
+		{
+			"id": "payments-and-tax",
+			"title": "Payments, invoices, and tax display",
+			"body": "METHODS. We accept major cards, ACH on approved business accounts, and wallet payments shown at checkout. Partial captures may occur for pre-orders as items ship; you will see separate line items on your statement.\n\nTAX. Sales tax is estimated from the shipping address and jurisdiction tables updated monthly. Tax exempt entities must upload certificates before placing qualifying orders; retroactive exemption is not guaranteed.\n\nINVOICES. PDF invoices are generated when the order ships; VAT/GST IDs appear when validated during checkout."
+		},
+		{
+			"id": "account-security",
+			"title": "Accounts, passwords, and device limits",
+			"body": "SECURITY. Enable two-factor authentication on your account; password resets require access to the registered email or SMS backup. Concurrent sessions from new devices may trigger a verification step.\n\nDEVICE LIMITS. Standard consumer accounts may activate software on up to three devices unless the license terms on the product page specify otherwise. Enterprise licenses follow the entitlement file attached to the order."
+		},
+		{
+			"id": "data-retention",
+			"title": "Support logs and data retention",
+			"body": "LOGS. Diagnostic logs you upload are retained 90 days unless attached to an open compliance matter. Chat transcripts with support are retained 24 months for quality and dispute resolution then minimized.\n\nDELETION. Account deletion requests remove profile data within 30 days except where law requires longer retention for invoices and tax records."
 		}
 	]
 }

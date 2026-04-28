@@ -20,15 +20,17 @@ spring:
       pgvector_textsearch: ${app.pgvector.text-search-config}
       pgvector_gin_index: ${app.pgvector.table}_${app.pgvector.tsv-column}_gin_idx
 
+# POC: minimize tokens per request (smaller prompts + shorter answers). Keep embedding dimensions
+# aligned with Flyway/DB; changing dimensions requires a new DB or migration + re-ingest.
 langchain4j:
   open-ai:
     chat-model:
       api-key: ${OPENAI_API_KEY}
       model-name: gpt-4o-mini
       temperature: 0.0
-      max-tokens: 200
-      log-requests: true
-      log-responses: true
+      max-tokens: 120
+      log-requests: false
+      log-responses: false
     embedding-model:
       api-key: ${OPENAI_API_KEY}
       model-name: text-embedding-3-small
@@ -41,16 +43,22 @@ app:
       min-rerank-score: 0.22
       no-evidence-message: "Not found in documents"
     retrieval:
-      min-score: 0.3
-      max-results: 3
-      initial-max-results: 15
+      # Stricter floor + fewer chunks → smaller prompts (main cost saver).
+      min-score: 0.38
+      max-results: 2
+      initial-max-results: 8
     reranking:
-      # Score retrieved chunks with the chat model, then keep top retrieval.max-results for the answer model.
+      # Extra chat calls per query — leave off for POC cost.
       enabled: false
-      cross-encoder-max-segments-per-call: 6
+      cross-encoder-max-segments-per-call: 4
     chunking:
-      max-segment-size-chars: 300
-      max-overlap-chars: 50
+      # Fewer, larger segments → fewer embedding rows on ingest (cheaper rebuilds).
+      max-segment-size-chars: 450
+      max-overlap-chars: 40
+    pipeline:
+      query-normalization-enabled: true
+      context-compression-enabled: true
+      max-injected-context-chars: 1800
   pgvector:
     host: localhost
     port: 5432
@@ -62,16 +70,16 @@ app:
     text-search-config: simple
     tsv-column: text_tsv
     hybrid-retrieval: true
-    hybrid-vector-max-results: 5
-    hybrid-keyword-max-results: 5
+    hybrid-vector-max-results: 3
+    hybrid-keyword-max-results: 3
 
   chat:
     safety:
       enabled: true
-      max-query-chars: 8000
-      max-response-chars: 32000
+      max-query-chars: 4000
+      max-response-chars: 8000
       extra-blocked-query-regexes: []
       extra-blocked-response-regexes: []
       post-llm-judge-enabled: false
-      unsafe-response-fallback: "I can't verify that answer. Please rephrase your question or try again."
+      unsafe-response-fallback: "Rejected."
       reject-unsafe-response-with-error: true

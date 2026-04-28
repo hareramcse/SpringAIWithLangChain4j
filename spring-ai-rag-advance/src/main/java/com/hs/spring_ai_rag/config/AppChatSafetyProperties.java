@@ -42,10 +42,10 @@ public class AppChatSafetyProperties {
 	private boolean postLlmJudgeEnabled = false;
 
 	/** When post-checks fail and {@link #rejectUnsafeResponseWithError} is false, return this body with 200. */
-	private String unsafeResponseFallback = "I can't verify that answer. Please rephrase your question or try again.";
+	private String unsafeResponseFallback = "Rejected.";
 
 	/**
-	 * If true, unsafe responses yield HTTP 422; if false, {@link #unsafeResponseFallback} is returned with 200.
+	 * If true, unsafe responses yield HTTP 422 (Unprocessable Content); if false, {@link #unsafeResponseFallback} is returned with 200.
 	 */
 	private boolean rejectUnsafeResponseWithError = true;
 }
