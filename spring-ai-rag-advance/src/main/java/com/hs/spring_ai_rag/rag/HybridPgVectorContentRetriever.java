@@ -1,11 +1,15 @@
 package com.hs.spring_ai_rag.rag;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.regex.Pattern;
 
-import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,7 +21,6 @@ import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.rag.content.Content;
-import dev.langchain4j.rag.content.aggregator.ReciprocalRankFuser;
 import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.rag.query.Query;
 import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
@@ -26,89 +29,145 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Dense pgvector search plus full-text search on a STORED {@code tsvector} column; results are merged with RRF.
+ * Hybrid retrieval: dense pgvector and FTS each run with their own limits; results are merged with distinct chunk
+ * text (vector order first, then keyword-only rows). Downstream {@link dev.langchain4j.rag.content.aggregator.ReRankingContentAggregator}
+ * performs re-ranking when enabled.
  */
 @Slf4j
 @RequiredArgsConstructor
 public final class HybridPgVectorContentRetriever implements ContentRetriever {
 
+	private static final Pattern SQL_IDENTIFIER = Pattern.compile("^[a-zA-Z_][a-zA-Z0-9_]*$");
+
+	private static final Set<String> ALLOWED_TEXT_SEARCH_CONFIGS = Set.of("simple", "english", "german", "spanish",
+			"french", "italian", "portuguese", "dutch", "swedish", "norwegian", "danish", "finnish", "hungarian",
+			"russian", "turkish");
+
 	private final EmbeddingStore<TextSegment> embeddingStore;
 	private final EmbeddingModel embeddingModel;
-	private final JdbcClient jdbc;
+	private final JdbcTemplate jdbcTemplate;
 	private final ObjectMapper objectMapper;
 	private final AppPgVectorProperties pg;
 	private final AppRagProperties rag;
-	private final int retrievalPoolSize;
+	/** Cap on merged candidates passed to the aggregator (reranking candidate pool or final top-k when reranking off). */
+	private final int maxChunksToRetrieve;
 
 	@Override
 	public List<Content> retrieve(Query query) {
-		String q = query.text();
-		if (q == null || q.isBlank()) {
+		String queryText = query.text();
+		if (queryText == null || queryText.isBlank()) {
 			return List.of();
 		}
-		PgVectorSqlIdentifiers.requireSqlIdentifier("table", pg.table());
-		PgVectorSqlIdentifiers.requireSqlIdentifier("tsv-column", pg.tsvColumn());
-		PgVectorSqlIdentifiers.requireRegconfig(pg.textSearchConfig());
+		assertSafeDynamicSqlLiterals();
 
-		Embedding queryEmbedding = embeddingModel.embed(q).content();
-		var retrieval = rag.retrieval();
-		var vectorRequest = EmbeddingSearchRequest.builder()
-				.queryEmbedding(queryEmbedding)
-				.maxResults(retrievalPoolSize)
-				.minScore(retrieval.minScore())
-				.build();
+		Embedding questionEmbedding = embeddingModel.embed(queryText).content();
+		var retrievalSettings = rag.retrieval();
 
-		List<Content> dense = new ArrayList<>();
-		for (var match : embeddingStore.search(vectorRequest).matches()) {
-			if (match.embedded() != null) {
-				dense.add(Content.from(match.embedded()));
-			}
-		}
+		int vectorCap = Math.max(0, pg.getHybridVectorMaxResults());
+		int keywordCap = Math.max(0, pg.getHybridKeywordMaxResults());
 
-		List<Content> keyword = keywordSearch(q, retrievalPoolSize);
-		if (keyword.isEmpty()) {
-			return dense.stream().limit(retrievalPoolSize).toList();
-		}
-		if (dense.isEmpty()) {
-			return keyword.stream().limit(retrievalPoolSize).toList();
-		}
-		List<Content> fused = ReciprocalRankFuser.fuse(List.of(dense, keyword), pg.rrfK());
-		return fused.stream().limit(retrievalPoolSize).toList();
+		List<Content> vectorMatches = vectorCap > 0
+				? searchVector(questionEmbedding, vectorCap, retrievalSettings.minScore())
+				: List.of();
+		List<Content> keywordMatches = keywordCap > 0 ? searchKeyword(queryText, keywordCap) : List.of();
+
+		List<Content> merged = mergeDistinctChunkTextPreservingVectorFirst(vectorMatches, keywordMatches);
+		return merged.stream().limit(maxChunksToRetrieve).toList();
 	}
 
-	private List<Content> keywordSearch(String queryText, int limit) {
-		String sql = ftsTopKSql();
-		return jdbc.sql(sql)
-				.param(queryText)
-				.param(queryText)
-				.param(limit)
-				.query((rs, rowNum) -> {
+	private List<Content> searchVector(Embedding questionEmbedding, int limit, double minScore) {
+		var embeddingSearchRequest = EmbeddingSearchRequest.builder().queryEmbedding(questionEmbedding).maxResults(limit)
+				.minScore(minScore).build();
+		List<Content> out = new ArrayList<>();
+		for (var match : embeddingStore.search(embeddingSearchRequest).matches()) {
+			if (match.embedded() != null) {
+				out.add(Content.from(match.embedded()));
+			}
+		}
+		return out;
+	}
+
+	private List<Content> searchKeyword(String queryText, int rowLimit) {
+		String sql = buildRankedFullTextSearchSql();
+		return jdbcTemplate.query(
+				sql,
+				(rs, rowNum) -> {
 					String text = rs.getString("text");
 					if (text == null || text.isBlank()) {
 						return null;
 					}
-					Metadata meta = readMetadata(rs);
+					Metadata meta = parseMetadataFromRow(rs);
 					return Content.from(TextSegment.from(text, meta));
-				})
-				.list()
+				},
+				queryText,
+				queryText,
+				rowLimit)
 				.stream()
 				.filter(Objects::nonNull)
 				.toList();
 	}
 
-	/** Full-text leg of hybrid search using the generated {@code tsvector} column (see {@code PgVectorGeneratedFtsInitializer}). */
-	private String ftsTopKSql() {
-		return "SELECT text, metadata FROM %s WHERE %s @@ plainto_tsquery('%s', ?) "
-				+ "ORDER BY ts_rank_cd(%s, plainto_tsquery('%s', ?)) DESC LIMIT ?"
-				.formatted(
-						pg.table(),
-						pg.tsvColumn(),
-						pg.textSearchConfig(),
-						pg.tsvColumn(),
-						pg.textSearchConfig());
+	/**
+	 * Concatenate vector then keyword hits and drop duplicate chunk bodies (same normalized text keeps first list’s
+	 * {@link Content}, typically dense).
+	 */
+	static List<Content> mergeDistinctChunkTextPreservingVectorFirst(List<Content> vectorMatches,
+			List<Content> keywordMatches) {
+		LinkedHashMap<String, Content> byNormalizedText = new LinkedHashMap<>();
+		for (Content c : vectorMatches) {
+			byNormalizedText.putIfAbsent(normalizedChunkText(c), c);
+		}
+		for (Content c : keywordMatches) {
+			byNormalizedText.putIfAbsent(normalizedChunkText(c), c);
+		}
+		return List.copyOf(byNormalizedText.values());
 	}
 
-	private Metadata readMetadata(java.sql.ResultSet rs) {
+	private static String normalizedChunkText(Content content) {
+		return content.textSegment().text().trim();
+	}
+
+	private void assertSafeDynamicSqlLiterals() {
+		requireSqlIdentifier("table", pg.getTable());
+		requireSqlIdentifier("tsv-column", pg.getTsvColumn());
+		requireRegconfig(pg.getTextSearchConfig());
+	}
+
+	private static void requireSqlIdentifier(String name, String value) {
+		if (value == null || !SQL_IDENTIFIER.matcher(value).matches()) {
+			throw new IllegalArgumentException("Invalid SQL identifier for " + name + ": " + value);
+		}
+	}
+
+	private static void requireRegconfig(String textSearchConfig) {
+		if (textSearchConfig == null || textSearchConfig.isBlank()) {
+			throw new IllegalArgumentException(
+					"Invalid PostgreSQL text search configuration: value is null or blank. Set app.pgvector.text-search-config "
+							+ "to a built-in name such as 'simple' or 'english' (not the embeddings table name).");
+		}
+		String normalized = textSearchConfig.trim().toLowerCase(Locale.ROOT);
+		if (!ALLOWED_TEXT_SEARCH_CONFIGS.contains(normalized)) {
+			throw new IllegalArgumentException("Invalid app.pgvector.text-search-config: '" + textSearchConfig
+					+ "'. Use a built-in PostgreSQL text search configuration (e.g. simple, english).");
+		}
+	}
+
+	private String buildRankedFullTextSearchSql() {
+		String reg = pg.getTextSearchConfig().trim().toLowerCase(Locale.ROOT);
+		return "SELECT text, metadata FROM "
+				+ pg.getTable()
+				+ " WHERE "
+				+ pg.getTsvColumn()
+				+ " @@ plainto_tsquery('"
+				+ reg
+				+ "', ?) ORDER BY ts_rank_cd("
+				+ pg.getTsvColumn()
+				+ ", plainto_tsquery('"
+				+ reg
+				+ "', ?)) DESC LIMIT ?";
+	}
+
+	private Metadata parseMetadataFromRow(java.sql.ResultSet rs) {
 		try {
 			String json = rs.getString("metadata");
 			if (json == null || json.isBlank()) {

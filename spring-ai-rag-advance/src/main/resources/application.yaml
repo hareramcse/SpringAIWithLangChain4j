@@ -1,6 +1,24 @@
 spring:
   application:
     name: spring-ai-rag
+  # Primary datasource for Flyway + JdbcTemplate (same DB as LangChain4j pgvector; URLs mirror app.pgvector).
+  datasource:
+    url: jdbc:postgresql://${app.pgvector.host}:${app.pgvector.port}/${app.pgvector.database}
+    username: ${app.pgvector.user}
+    password: ${app.pgvector.password}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    placeholders:
+      pgvector_table: ${app.pgvector.table}
+      pgvector_dimension: ${app.pgvector.dimension}
+      pgvector_tsv_column: ${app.pgvector.tsv-column}
+      pgvector_textsearch: ${app.pgvector.text-search-config}
+      pgvector_gin_index: ${app.pgvector.table}_${app.pgvector.tsv-column}_gin_idx
 
 langchain4j:
   open-ai:
@@ -17,41 +35,21 @@ langchain4j:
       dimensions: 512
 
 app:
-  eval:
-    # Set true only locally to expose POST /eval/run (uses OpenAI like /chat). Cases: separate JSON from ingest corpus.
-    http-enabled: false
-    dataset-resource: "classpath:eval/golden-set.json"
   rag:
     guardrail:
-      # When reranking is on: if max RERANKED_SCORE among final chunks is below min-rerank-score, no excerpts are sent (model should reply with no-evidence-message).
       enabled: true
       min-rerank-score: 0.22
-      # Must match RagGuardrailMessages.NO_EVIDENCE_RESPONSE unless you change that constant too.
       no-evidence-message: "Not found in documents"
     retrieval:
       min-score: 0.3
-      # Final number of chunks passed to the chat model after re-rank + optional MMR.
       max-results: 3
-      # Wider dense retrieval pool when re-ranking is on; must be >= rerank-candidate-cap.
       initial-max-results: 15
     reranking:
-      enabled: true
-      # Batched LLM cross-encoder-style relevance scores per segment.
+      # Score retrieved chunks with the chat model, then keep top retrieval.max-results for the answer model.
+      enabled: false
       cross-encoder-max-segments-per-call: 6
-      # How many fused passages receive cross-encoder scores before MMR / final trim (>= max-results).
-      rerank-candidate-cap: 12
-      mmr-enabled: true
-      # Balance relevance vs diversity in [0,1] (higher = more relevance to query, lower = more diversity).
-      mmr-lambda: 0.5
-      # Optional minimum re-rank score after cross-encoder (omit for no floor).
-      # min-score: 0.1
-    # Bound via AppRagProperties.chunking() → ChunkingConfig
     chunking:
-      # Which splitter to use: RECURSIVE | PARAGRAPH | SENTENCE | LINE | WORD | CHARACTER
-      strategy: RECURSIVE
-      # Target max segment size in characters (hierarchical strategies cap blocks before sub-splitting).
       max-segment-size-chars: 300
-      # Character overlap between adjacent chunks where the splitter supports it.
       max-overlap-chars: 50
   pgvector:
     host: localhost
@@ -61,8 +59,19 @@ app:
     password: password
     table: langchain4j_embeddings
     dimension: 512
-    # STORED generated tsvector + GIN (see PgVectorGeneratedFtsInitializer). Use "simple" for IDs/codes; "english" for stemming.
     text-search-config: simple
     tsv-column: text_tsv
     hybrid-retrieval: true
-    rrf-k: 60
+    hybrid-vector-max-results: 5
+    hybrid-keyword-max-results: 5
+
+  chat:
+    safety:
+      enabled: true
+      max-query-chars: 8000
+      max-response-chars: 32000
+      extra-blocked-query-regexes: []
+      extra-blocked-response-regexes: []
+      post-llm-judge-enabled: false
+      unsafe-response-fallback: "I can't verify that answer. Please rephrase your question or try again."
+      reject-unsafe-response-with-error: true

@@ -13,7 +13,8 @@ import dev.langchain4j.model.output.Response;
 import dev.langchain4j.model.scoring.ScoringModel;
 
 /**
- * LLM-as-judge relevance: the chat model returns a JSON array of scores in {@code [0,1]} per passage batch.
+ * LLM-as-judge relevance: the chat model returns a JSON array of scores in
+ * {@code [0,1]} per passage batch.
  */
 public class LlmCrossEncoderScoringModel implements ScoringModel {
 
@@ -52,8 +53,7 @@ public class LlmCrossEncoderScoringModel implements ScoringModel {
 	private String buildScoringPrompt(String query, List<TextSegment> batch) {
 		StringBuilder passages = new StringBuilder();
 		for (int i = 0; i < batch.size(); i++) {
-			passages.append("PASSAGE_").append(i).append(":\n")
-					.append(batch.get(i).text().replace("\"", "'"))
+			passages.append("PASSAGE_").append(i).append(":\n").append(batch.get(i).text().replace("\"", "'"))
 					.append("\n\n");
 		}
 		return """
@@ -64,7 +64,8 @@ public class LlmCrossEncoderScoringModel implements ScoringModel {
 				%s
 
 				%s
-				""".formatted(batch.size(), batch.size(), query, passages);
+				"""
+				.formatted(batch.size(), batch.size(), query, passages);
 	}
 
 	private String stripMarkdownFences(String raw) {
@@ -89,11 +90,11 @@ public class LlmCrossEncoderScoringModel implements ScoringModel {
 		}
 	}
 
-	private static double clamp01(double x) {
+	private double clamp01(double x) {
 		return Math.max(0.0, Math.min(1.0, x));
 	}
 
-	private static List<Double> neutralScores(int n) {
+	private List<Double> neutralScores(int n) {
 		List<Double> out = new ArrayList<>(n);
 		for (int i = 0; i < n; i++) {
 			out.add(NEUTRAL_FALLBACK_SCORE);

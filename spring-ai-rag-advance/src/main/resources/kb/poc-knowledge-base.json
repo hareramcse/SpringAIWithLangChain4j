@@ -1,5 +1,5 @@
 {
-	"description": "POC corpus for ingest only (vectors + text). Evaluation cases live separately under classpath:eval/golden-set.json.",
+	"description": "POC corpus for ingest only (vectors + text).",
 	"documents": [
 		{
 			"id": "returns-policy",

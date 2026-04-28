@@ -12,10 +12,9 @@ This project is a **small but complete RAG (Retrieval-Augmented Generation) proo
 4. [Features in depth (why / without / example)](#4-features-in-depth-why--without--example)
 5. [Configuration reference](#5-configuration-reference)
 6. [Where to read the code](#6-where-to-read-the-code)
-7. [Evaluation dataset (separate from corpus)](#7-evaluation-dataset-separate-from-corpus)
-8. [How to test this application](#8-how-to-test-this-application)
-9. [Glossary](#9-glossary)
-10. [Troubleshooting](#10-troubleshooting)
+7. [How to test this application](#7-how-to-test-this-application)
+8. [Glossary](#8-glossary)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -34,9 +33,8 @@ All ingestible content lives in **one file**:
 | Path | Role |
 |------|------|
 | `src/main/resources/kb/poc-knowledge-base.json` | **`documents`**: ingest-only text (`id`, `title`, `body`). |
-| `src/main/resources/eval/golden-set.json` | **Regression / eval**: `cases[]` with queries and expected substrings — **never embedded**; pointed to by `app.eval.dataset-resource`. |
 
-At startup (`IngestionRunner`), if the pgvector table is empty, **`ClasspathKnowledgeBaseLoader`** turns each entry into a LangChain4j **`Document`**:
+At startup (`IngestionRunner`), if the pgvector table is empty, the runner reads **`kb/poc-knowledge-base.json`** and turns each entry into a LangChain4j **`Document`**:
 
 - Text is `# {title}\n\n{body}` so headings survive chunking.
 - Metadata includes `kb_id` (the JSON `id`) for debugging.
@@ -48,7 +46,7 @@ At startup (`IngestionRunner`), if the pgvector table is empty, **`ClasspathKnow
 - **RMA:** *“The RMA window is 14 days from approval…”*
 - **Filler / distraction:** shipping zones (east vs west hub)—useful to see re-ranking beat “similar but wrong” chunks.
 
-Older sample assets (`static/sample_data.json`, `static/cricket_rules.pdf`) were removed so the POC is **one coherent corpus** aligned with evaluation cases.
+Older sample assets (`static/sample_data.json`, `static/cricket_rules.pdf`) were removed so the POC is **one coherent JSON corpus**.
 
 ---
 
@@ -56,13 +54,13 @@ Older sample assets (`static/sample_data.json`, `static/cricket_rules.pdf`) were
 
 | Phase | What happens |
 |-------|----------------|
-| **Startup (empty DB)** | Load `poc-knowledge-base.json` → split into segments → embed → store in **Postgres + pgvector**. Optional **generated `tsvector` + GIN** for hybrid search (`PgVectorGeneratedFtsInitializer`). |
-| **Each `POST /chat`** | Build user message → **query expansion** → retrieve (dense ± hybrid) → **RRF** fusion across paraphrases → **LLM re-rank** + optional **MMR** → **guardrail** (strip context if best re-rank score is too low) → **answer** model with system rules (must say **“Not found in documents”** when no excerpts). |
+| **Startup (empty DB)** | **Flyway** runs `db/migration` SQL (pgvector extension, embedding table, generated **`tsvector`** + GIN). Then load `poc-knowledge-base.json` → split → embed → store (LangChain4j `createTable(false)` — schema owned by Flyway). |
+| **Each `POST /chat`** | Build user message → retrieve (**dense** first; **FTS** only if dense returns nothing and hybrid is on) → optional **LLM re-rank** (`app.rag.reranking.enabled`) → **guardrail** (only meaningful when re-ranking is on) → chat model with system rules (**“Not found in documents”** when there are no excerpts). |
 
 **Models (`application.yaml`):**
 
 - **Embeddings:** `text-embedding-3-small` @ 512 dims (must match `app.pgvector.dimension`).
-- **Chat:** `gpt-4o-mini` — paraphrases, passage scores (JSON), final reply.
+- **Chat:** `gpt-4o-mini` — passage scores (JSON) when re-ranking is on, final reply.
 
 **Prerequisites:** Java 21, Maven, Postgres with **pgvector**, `OPENAI_API_KEY`.
 
@@ -82,7 +80,7 @@ Each subsection follows: **Why** → **If you turn it off or skip it** → **POC
 
 **POC example:** The returns policy and warranty SKU live in **different** `documents` entries; chunk size `300` chars (default) keeps most paragraphs coherent. Try: *“Can I return opened software after the license key is revealed?”* — the golden phrase *“Opened software may not be returned”* should land in a retrieved chunk.
 
-**Code:** `ChunkingConfig`, `AppRagProperties.chunking`, `DataTransformerImpl`.
+**Code:** `ChunkingConfig` (recursive split only), `AppRagProperties.chunking`, splitting inline in `IngestionRunner`.
 
 ---
 
@@ -98,39 +96,33 @@ Each subsection follows: **Why** → **If you turn it off or skip it** → **POC
 
 ---
 
-### 4.3 Hybrid search (vector + Postgres full-text)
+### 4.3 Hybrid search (vector first, FTS fallback)
 
-**Why:** Vectors are weak on **exact tokens** (SKUs, ticket ids, rare codes). **Full-text search** on a **stored `tsvector`** column finds literal matches; results are **RRF-fused** with dense hits.
+**Why:** **Dense** search runs first. If it returns **no** rows (nothing passes similarity / empty store), **full-text search** on the stored **`tsvector`** column runs as a fallback so exact tokens (SKUs, codes) can still match.
 
-**Without hybrid:** Query *“Is **SKU-9922-B** transferable?”* might rank oddly in embedding space; FTS still hits the warranty paragraph that contains the exact SKU.
+**Without hybrid:** When dense returns nothing, there is no FTS fallback—only dense results.
 
-**POC example:** Body text includes **`SKU-9922-B`** and **`CASE-POC-7741`**. Disable `app.pgvector.hybrid-retrieval` and you may still succeed on some runs, but exact-id questions are the main regression risk.
+**POC example:** Body text includes **`SKU-9922-B`**. If embeddings miss, FTS may still find the paragraph with that SKU.
 
-**Code:** `HybridPgVectorContentRetriever`, `PgVectorGeneratedFtsInitializer`, `app.pgvector.text-search-config`, `tsv-column`.
-
----
-
-### 4.4 Query expansion + RRF across paraphrases
-
-**Why:** Users phrase questions differently than the corpus. A small LLM generates **extra queries**; each does retrieval; **Reciprocal Rank Fusion (RRF)** merges ranked lists so chunks strong under **several** phrasings rise.
-
-**Without expansion:** One awkward wording can miss the best chunk even though a paraphrase would hit it.
-
-**POC example:** *“hardware swap email subject”* vs explicit *“CASE-POC-7741”*—expansions improve recall before re-ranking.
-
-**Code:** `ExpandingQueryTransformer` in `AiConfig`, fusion inside LangChain4j’s aggregator path (`SimpleRerankingAggregator` uses `ReciprocalRankFuser`).
+**Code:** `HybridPgVectorContentRetriever`, `db/migration/V1__rag_pgvector.sql`, `spring.flyway.placeholders.*`, `app.pgvector.text-search-config`, `tsv-column`.
 
 ---
 
-### 4.5 LLM re-ranking + MMR
+### 4.4 Query expansion
 
-**Why:** Dense similarity is **imprecise**—the top cosine hit can be a tangentially related paragraph (e.g. shipping hubs when you asked about returns). A second **LLM pass** scores *(question, passage)* in `[0,1]`. **MMR** reduces near-duplicate chunks in the final context.
+**Not in this POC:** Multi-query paraphrasing was removed to keep the stack small. Retrieval uses the **user question only**.
 
-**Without re-ranking:** Order is **vector (+RRF) only**—faster, but easier to inject a **plausible wrong** paragraph. **Without MMR:** three almost identical snippets can waste context.
+---
 
-**POC example:** Returns vs shipping both mention “days” and “delivery”; re-ranking should prefer the **returns** paragraph for refund questions.
+### 4.5 LLM re-ranking
 
-**Code:** `LlmCrossEncoderScoringModel`, `SimpleRerankingAggregator`, `MmrSelector`.
+**Why:** After retrieval (up to **`initial-max-results`** candidates when re-ranking is on), a **second LLM pass** scores each *(question, passage)* in `[0,1]`. The top **`max-results`** passages are sent to the answer model—same mental model as “re-rank after the vector store, before the chat model.”
+
+**Without re-ranking:** Order is **dense order** (or FTS order if dense was empty and hybrid ran FTS).
+
+**POC example:** Returns vs shipping both mention “days”; re-ranking should prefer the **returns** paragraph for refund questions.
+
+**Code:** `LlmCrossEncoderScoringModel`, LangChain4j **`ReRankingContentAggregator`**, `RagQuerySelectors.rerankingQuerySelector()`.
 
 ---
 
@@ -144,19 +136,7 @@ Each subsection follows: **Why** → **If you turn it off or skip it** → **POC
 
 **Caveats:** Guardrail logic runs only when **`app.rag.reranking.enabled`** is true (scores come from the re-ranker). Tune `min-rerank-score`: too **high** → frequent “not found”; too **low** → weak grounding slips through.
 
-**Code:** `GatingRetrievalAugmentor`, `AppRagProperties.guardrail`, `RagGuardrailMessages`, `ChatService` system message.
-
----
-
-### 4.7 Golden-set evaluation (optional HTTP)
-
-**Why:** Regression-check retrieval + answers with a tiny **query → expected evidence → expected answer phrases** dataset.
-
-**Without it:** You only notice drift in production.
-
-**POC:** Cases live in **`eval/golden-set.json`** (separate from **`kb/poc-knowledge-base.json`**) so expectations are never mixed into ingest payloads. Enable **`app.eval.http-enabled: true`** locally and call **`POST /eval/run`** (uses OpenAI like `/chat`). Path is **`app.eval.dataset-resource`** (default `classpath:eval/golden-set.json`).
-
-**Code:** `RagEvaluationService`, `EvalController` (conditional), `AppEvalProperties`.
+**Code:** `GatingRetrievalAugmentor`, `AppRagProperties.guardrail`, `ChatService` system message (`NO_EVIDENCE_REPLY`).
 
 ---
 
@@ -164,15 +144,14 @@ Each subsection follows: **Why** → **If you turn it off or skip it** → **POC
 
 | YAML area | Highlights |
 |-----------|------------|
-| `app.rag.chunking.*` | `RECURSIVE` split, `max-segment-size-chars`, overlap. |
+| `app.rag.chunking.*` | Recursive split only: `max-segment-size-chars`, `max-overlap-chars`. |
 | `app.rag.retrieval.*` | Dense `min-score`, `max-results`, `initial-max-results` (wide pool when re-ranking). |
-| `app.rag.reranking.*` | Enable LLM scores, batch size, MMR, optional per-chunk `min-score`. |
-| `app.rag.guardrail.*` | `enabled`, `min-rerank-score`, `no-evidence-message` (logged; reply text fixed in `RagGuardrailMessages` + `ChatService`). |
-| `app.pgvector.*` | Connection, table, dimension, hybrid FTS (`text-search-config`, `tsv-column`, `hybrid-retrieval`, `rrf-k`). |
-| `app.eval.*` | `http-enabled`, `dataset-resource` (`classpath:eval/golden-set.json` by default). |
-| `langchain4j.open-ai.*` | Chat + embedding models; **embedding dimensions must match** `app.pgvector.dimension`. |
-
-**Java constant:** query expansion count (**3**) is fixed in `AiConfig` (not YAML) for brevity.
+| `app.rag.reranking.*` | Enable LLM scores on retrieved chunks, batch size, optional per-chunk `min-score`. |
+| `app.rag.guardrail.*` | `enabled`, `min-rerank-score`, `no-evidence-message` (logged; phrase aligned with `ChatService.NO_EVIDENCE_REPLY`). |
+| `app.pgvector.*` | Connection, table, dimension, hybrid toggle (`hybrid-retrieval`: vector then FTS fallback), FTS names (`text-search-config`, `tsv-column`). Also drives **`spring.datasource`** and **Flyway placeholders** — keep in sync. |
+| `spring.datasource.*` | JDBC URL / user / password (defaults mirror `app.pgvector` via `${…}` placeholders). |
+| `spring.flyway.placeholders.*` | Substituted into `V1__rag_pgvector.sql` (`pgvector_table`, `dimension`, `tsv` column, `textsearch`, GIN index name). |
+| `langchain4j.open-ai.*` | Chat + embedding models; **embedding dimensions must match** `app.pgvector.dimension` and Flyway `vector(...)`. |
 
 ---
 
@@ -180,28 +159,17 @@ Each subsection follows: **Why** → **If you turn it off or skip it** → **POC
 
 | Topic | Files |
 |-------|--------|
-| RAG beans | `AiConfig.java`, `AppRagProperties.java`, `AppPgVectorProperties.java`, `AppEvalProperties.java` |
-| Ingest | `IngestionRunner.java`, `ClasspathKnowledgeBaseLoader.java`, `EmbeddingStoreHelper.java`, `DataTransformerImpl.java` |
-| Hybrid + FTS DDL | `HybridPgVectorContentRetriever.java`, `PgVectorGeneratedFtsInitializer.java`, `PgVectorSqlIdentifiers.java` |
-| Re-rank + MMR | `LlmCrossEncoderScoringModel.java`, `SimpleRerankingAggregator.java`, `MmrSelector.java` |
-| Guardrail | `GatingRetrievalAugmentor.java`, `RagGuardrailMessages.java`, `ChatService.java` |
-| Evaluation | `RagEvaluationService.java`, `EvalController.java`, `eval/golden-set.json` |
-| JDBC for FTS | `PgVectorDataSourceConfig.java` |
+| RAG beans | `AiConfig.java`, `AppRagProperties.java`, `AppPgVectorProperties.java` |
+| Ingest | `IngestionRunner.java` |
+| Hybrid + FTS | `HybridPgVectorContentRetriever.java`, `PgVectorSqlIdentifiers.java`, `db/migration/V1__rag_pgvector.sql` |
+| Re-ranking | `LlmCrossEncoderScoringModel.java`, `RagQuerySelectors.java` (wired via `ReRankingContentAggregator` in `AiConfig`) |
+| Guardrail | `GatingRetrievalAugmentor.java`, `ChatService.java` (`NO_EVIDENCE_REPLY`) |
+| Schema (Flyway) | `src/main/resources/db/migration/V1__rag_pgvector.sql`, `application.yaml` (`spring.datasource`, `spring.flyway`) |
 | HTTP | `ChatController.java` |
 
 ---
 
-## 7. Evaluation dataset (separate from corpus)
-
-Dataset: **`eval/golden-set.json`** — root object with **`cases`** array. Each case has `id`, `query`, `expectedDocumentContains`, `expectedAnswerContains` (all phrases must appear in the model answer, case-insensitive). This file is **only** for `/eval/run`; it is **not** ingested.
-
-Service: **`RagEvaluationService`** loads **`app.eval.dataset-resource`**, uses the same **`RetrievalAugmentor`** as chat, then **`ChatService.chat`**, and reports chunk hit + answer phrase checks.
-
-**Security:** keep `app.eval.http-enabled: false` in shared environments; evaluation calls OpenAI.
-
----
-
-## 8. How to test this application
+## 7. How to test this application
 
 Follow these steps in order the first time you run the POC. Each step names **what you do**, **what should happen**, and **which code participates**.
 
@@ -211,7 +179,7 @@ Follow these steps in order the first time you run the POC. Each step names **wh
 |---------------|-----|
 | **Java 21** + **Maven** (or use the included `mvnw` / `mvnw.cmd`) | Compiles and runs Spring Boot. |
 | **Docker** (optional but easiest) | Runs Postgres + pgvector to match `application.yaml`. |
-| **`OPENAI_API_KEY`** in the environment | `langchain4j.open-ai.*` reads it for embeddings, paraphrases, re-rank scoring, chat, and eval. Without it the app fails at startup or on first model call. |
+| **`OPENAI_API_KEY`** in the environment | `langchain4j.open-ai.*` reads it for embeddings, optional re-rank scoring, and chat. Without it the app fails at startup or on first model call. |
 
 **Code:** no project Java here—only OS and shell.
 
@@ -254,17 +222,13 @@ mvn spring-boot:run
 
 **What happens on a cold database (empty embedding table):**
 
-1. **Spring context starts** — `SpringAiRagApplication` bootstraps beans from `AiConfig`, `ChunkingConfig`, `PgVectorDataSourceConfig`, etc.
-2. **`PgVectorEmbeddingStore` bean** — `AiConfig.embeddingStore()` connects to Postgres and creates the embeddings table if needed (`createTable(true)`).
-3. **`PgVectorGeneratedFtsInitializer`** (`ApplicationRunner`, `@DependsOn("embeddingStore")`) — adds the generated **`text_tsv`** column and GIN index when `app.pgvector.hybrid-retrieval` is true.
-4. **`IngestionRunner`** (`CommandLineRunner`, runs after `ApplicationRunner`s) — calls **`EmbeddingStoreHelper.hasExistingData()`** (one probe vector search). If the store is empty:
-   - **`ClasspathKnowledgeBaseLoader.loadDocuments()`** reads `kb/poc-knowledge-base.json` and builds **`Document`** instances (only the `documents` array).
-   - **`DataTransformerImpl`** uses the **`DocumentSplitter`** from `ChunkingConfig` to produce **`TextSegment`**s.
-   - **`EmbeddingStoreHelper.embedAndStore()`** batches embeddings via the **`EmbeddingModel`** bean and writes rows with **`embeddingStore.addAll(...)`**.
+1. **Spring context starts** — `SpringAiRagApplication` bootstraps `DataSource`, **Flyway** (applies `V1__rag_pgvector.sql`: extension + table + **`tsvector`** column + GIN), then `AiConfig`, `ChunkingConfig`, etc.
+2. **`PgVectorEmbeddingStore` bean** — `AiConfig.embeddingStore()` connects with **`createTable(false)`** (table already created by Flyway).
+3. **`IngestionRunner`** (`CommandLineRunner`) — one probe vector search; if the store is empty: load JSON from the classpath, **`DocumentSplitter`** from `ChunkingConfig`, **`embeddingModel.embedAll`**, **`embeddingStore.addAll`**.
 
-**Logs to expect:** “Loading classpath knowledge base…”, “Parsed *N* knowledge document(s).”, “Split into *M* segment(s).”, “Embedded and stored…”, “Ingest pipeline finished.” On a **second** start with data already present: “Embedding store already has data; skipping ingest.”
+**Logs to expect:** “Loading knowledge base…”, “Parsed *N*…”, “Split into *M*…”, “Embedded and stored…”. Second start: “Embedding store already has data; skipping ingest.”
 
-**Code map:** `SpringAiRagApplication.java` → `IngestionRunner.java` → `ClasspathKnowledgeBaseLoader.java` → `DataTransformerImpl.java` → `ChunkingConfig.java` → `EmbeddingStoreHelper.java` → LangChain4j `PgVectorEmbeddingStore`. Parallel: `PgVectorGeneratedFtsInitializer.java` + `PgVectorDataSourceConfig.java` + `HybridPgVectorContentRetriever.java` (used later at chat time).
+**Code map:** `SpringAiRagApplication.java` → Flyway `V1__rag_pgvector.sql` → `IngestionRunner.java` + `ChunkingConfig.java` → `PgVectorEmbeddingStore`. Chat time: `HybridPgVectorContentRetriever.java` (uses auto-configured **`JdbcTemplate`**).
 
 ---
 
@@ -280,62 +244,44 @@ curl -s -X POST http://localhost:8080/chat -H "Content-Type: text/plain" -d "Can
 
 1. **`ChatController.chat(String)`** receives the body and delegates to **`ChatService`**.
 2. **`ChatService`** is a LangChain4j **`@AiService`** interface: the generated implementation calls the configured **`RetrievalAugmentor`** (your **`GatingRetrievalAugmentor`** wrapping **`DefaultRetrievalAugmentor`**).
-3. **`DefaultRetrievalAugmentor`** (from LangChain4j) runs **`ExpandingQueryTransformer`** (paraphrases; wired in `AiConfig`), then **`ContentRetriever.retrieve`** for each query — either **`HybridPgVectorContentRetriever`** (dense + FTS + RRF) or dense-only **`EmbeddingStoreContentRetriever`**, depending on `app.pgvector.hybrid-retrieval`.
-4. **`SimpleRerankingAggregator`** (when re-ranking is on) fuses lists, calls **`LlmCrossEncoderScoringModel`** for scores, **`MmrSelector`** for diversity.
+3. **`DefaultRetrievalAugmentor`** runs **`ContentRetriever.retrieve`** — either **`HybridPgVectorContentRetriever`** (dense first; FTS only if dense is empty) or dense-only **`EmbeddingStoreContentRetriever`**, depending on `app.pgvector.hybrid-retrieval`.
+4. **`ReRankingContentAggregator`** (when `app.rag.reranking.enabled`) calls **`LlmCrossEncoderScoringModel`** to score chunks and keeps top **`max-results`**; otherwise **`DefaultContentAggregator`** passes retrieval through.
 5. **`GatingRetrievalAugmentor`** clears retrieved content if the best re-rank score is below **`app.rag.guardrail.min-rerank-score`** (when guardrail + re-ranking are enabled).
 6. The **chat model** generates the final string using the **`@SystemMessage`** rules in **`ChatService.java`** (including **“Not found in documents”** when there are no excerpts).
 
-**Code map:** `ChatController.java` → `ChatService.java` → (LangChain4j runtime) → `AiConfig.java` (`RetrievalAugmentor`, `ContentRetriever`, beans) → `GatingRetrievalAugmentor.java` → `HybridPgVectorContentRetriever.java` / `SimpleRerankingAggregator.java` / `LlmCrossEncoderScoringModel.java`.
+**Code map:** `ChatController.java` → `ChatService.java` → `AiConfig.java` → `GatingRetrievalAugmentor.java` → `HybridPgVectorContentRetriever.java` (or dense-only retriever) → optional `ReRankingContentAggregator` / `LlmCrossEncoderScoringModel.java` when re-ranking is enabled.
 
 ---
 
-### Step 6 — (Optional) Run the golden-set evaluation (`POST /eval/run`)
+### Step 6 — Re-test after corpus or config changes
 
-1. In **`application.yaml`**, set **`app.eval.http-enabled: true`** (use only on trusted networks; the endpoint calls OpenAI like chat).
-2. Restart the app.
-3. Call:
-
-```bash
-curl -s -X POST http://localhost:8080/eval/run
-```
-
-**What happens:** **`EvalController`** (registered only when `http-enabled` is true) invokes **`RagEvaluationService.runEvaluation()`**, which loads **`eval/golden-set.json`** from **`app.eval.dataset-resource`**, runs each case through **`retrievalAugmentor.augment(...)`** and **`chatService.chat(...)`**, and returns a JSON **`RagEvalReport`** (chunk hits, answer phrase checks, previews).
-
-**Code map:** `application.yaml` → `AppEvalProperties.java` → `EvalController.java` → `RagEvaluationService.java` → same `RetrievalAugmentor` + `ChatService` as Step 5. Dataset: **`eval/golden-set.json`** (never ingested by `ClasspathKnowledgeBaseLoader`).
-
----
-
-### Step 7 — Re-test after corpus or config changes
-
-- **Changed `kb/poc-knowledge-base.json` only:** truncate or drop **`app.pgvector.table`** (or the whole DB), restart so **`IngestionRunner`** ingests again (see Troubleshooting §10).
-- **Changed `eval/golden-set.json` only:** no DB reset; restart if you toggled YAML; re-run **`/eval/run`**.
+- **Changed `kb/poc-knowledge-base.json` only:** truncate or drop **`app.pgvector.table`** (or the whole DB), restart so **`IngestionRunner`** ingests again (see Troubleshooting §9).
 - **Changed retrieval / guardrail YAML:** restart; no re-ingest required unless you change chunking or corpus.
 
 ---
 
-## 9. Glossary
+## 8. Glossary
 
 | Term | Meaning |
 |------|---------|
 | **RAG** | Retrieve evidence, augment prompt, generate. |
 | **Embedding** | Numeric vector representing text for similarity. |
 | **pgvector** | Postgres extension for vector similarity search. |
-| **RRF** | Reciprocal Rank Fusion — merge several ranked lists without calibrating scores. |
-| **Re-ranking** | Second-stage scoring of *(query, passage)* pairs (here: LLM JSON scores). |
-| **MMR** | Maximal Marginal Relevance — trade relevance vs redundancy in the final pick. |
+| **RRF** | Reciprocal Rank Fusion — LangChain4j can use this when merging multiple ranked lists (e.g. multi-source retrieval). This POC does **not** fuse vector + FTS; hybrid is **fallback** only. |
+| **Re-ranking** | Second-stage scoring of *(query, passage)* pairs (here: LLM JSON scores), then top-`max-results` for the answer model. |
 | **FTS** | Full-text search (`tsvector` / `plainto_tsquery` / `ts_rank_cd`). |
 | **Guardrail** | Block grounded answers when best re-rank confidence is below a threshold. |
 
 ---
 
-## 10. Troubleshooting
+## 9. Troubleshooting
 
 0. **Switched corpus but answers still reflect old PDF/JSON** — Ingest only runs when the embedding table is **empty**. For a fresh POC ingest, truncate or drop the table configured in `app.pgvector.table`, then restart.
 1. **Empty or “Not found” too often** — Lower `app.rag.guardrail.min-rerank-score` or `app.rag.retrieval.min-score`; confirm ingest ran (non-empty table).
 2. **Wrong factual answers** — Raise guardrail threshold; widen `initial-max-results`; check hybrid FTS is on for SKU-like queries.
-3. **Startup error on rerank cap** — When re-ranking is on: `initial-max-results` ≥ `rerank-candidate-cap` ≥ `max-results` (`AiConfig` validates).
+3. **Startup error on retrieval sizes** — When re-ranking is on: `initial-max-results` must be **≥** `max-results` (`AiConfig` validates).
 4. **Embedding dimension errors** — `langchain4j.open-ai.embedding-model.dimensions` must equal `app.pgvector.dimension`.
-5. **Eval failures after corpus edits** — Update **`eval/golden-set.json`** (expected substrings + queries) to match **`kb/poc-knowledge-base.json`** `documents`.
+5. **`BadSqlGrammarException` on `ALTER TABLE … to_tsvector('langchain4j_embeddings', …)`** — **`app.pgvector.text-search-config`** was wrong (often the **table name** ended up in that field). It must be a PostgreSQL **regconfig** such as **`simple`** or **`english`**. Check `application.yaml` and any **`APP_PGVECTOR_*`** env vars. The project binds **`AppPgVectorProperties`** as a **JavaBean** (getters/setters) so YAML keys map by **name**, not constructor order; `textSearchConfig` also defaults to **`simple`** if the key is missing.
 
 ---
 
