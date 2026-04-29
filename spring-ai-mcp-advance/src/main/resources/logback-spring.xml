@@ -1,8 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <!-- STDIO MCP server: logs MUST go to file, NOT stdout (stdout = JSON-RPC) -->
+    <!--
+      STDIO MCP: never log to stdout/stderr (that pipe is JSON-RPC for the host).
+
+      Use an absolute directory: MCP clients often start java with cwd System32,
+      so a relative path like "logs/..." becomes C:\Windows\System32\logs\... and fails.
+    -->
+    <property name="MCP_LOG_FILE"
+              value="${mcp.log.file:-${user.home}/.spring-ai-mcp-advance/logs/mcp-server.log}" />
+
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
-        <file>logs/mcp-server.log</file>
+        <file>${MCP_LOG_FILE}</file>
         <append>false</append>
         <encoder>
             <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>

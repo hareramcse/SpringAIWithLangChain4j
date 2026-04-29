@@ -1,10 +1,16 @@
 package com.hs.tool;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 
+import com.hs.dto.SuggestItemsModels.ItemSuggestion;
+import com.hs.dto.SuggestItemsModels.SuggestItemsResponse;
 import com.hs.entity.CartItem;
 import com.hs.repository.CartItemRepository;
 
@@ -73,6 +79,72 @@ public class ShoppingCartMcpService {
 
 	public String ping() {
 		return "pong";
+	}
+
+	/**
+	 * Rank catalog items for the given query. Prefers products not already in the cart.
+	 * {@code limit} is clamped to 1–20.
+	 */
+	public SuggestItemsResponse suggestItems(String query, int limit) {
+		int safeLimit = Math.clamp(limit, 1, 20);
+		String q = query == null ? "" : query.trim();
+		String qLower = q.toLowerCase();
+
+		Set<String> inCartIds = cartItemRepository.findAll().stream()
+				.map(CartItem::getProductId)
+				.collect(Collectors.toSet());
+
+		List<String> names = new ArrayList<>(PRODUCTS.keySet());
+		List<String> matched = names.stream()
+				.filter(n -> qLower.isEmpty() || n.toLowerCase().contains(qLower))
+				.sorted(suggestionComparator(qLower, inCartIds))
+				.limit(safeLimit)
+				.toList();
+
+		String note = null;
+		if (!qLower.isEmpty() && matched.isEmpty()) {
+			matched = names.stream()
+					.sorted(suggestionComparator("", inCartIds))
+					.limit(safeLimit)
+					.toList();
+			note = "No product name contained that text; showing general suggestions from the catalog.";
+		}
+
+		List<ItemSuggestion> suggestions = matched.stream()
+				.map(name -> toSuggestion(name, inCartIds, qLower))
+				.toList();
+
+		log.info("[suggestItems] query='{}' limit={} -> {} hit(s)", q, safeLimit, suggestions.size());
+		return new SuggestItemsResponse(suggestions, q, safeLimit, note);
+	}
+
+	private static Comparator<String> suggestionComparator(String qLower, Set<String> inCartIds) {
+		return Comparator
+				.comparing((String name) -> matchRank(name, qLower))
+				.thenComparing(name -> inCartIds.contains(name))
+				.thenComparing(name -> name.toLowerCase());
+	}
+
+	private static int matchRank(String name, String qLower) {
+		if (qLower.isEmpty()) {
+			return 0;
+		}
+		int idx = name.toLowerCase().indexOf(qLower);
+		return idx < 0 ? Integer.MAX_VALUE : idx;
+	}
+
+	private ItemSuggestion toSuggestion(String name, Set<String> inCartIds, String qLower) {
+		double unitPrice = PRODUCTS.get(name);
+		boolean inCart = inCartIds.contains(name);
+		String reason;
+		if (qLower.isEmpty()) {
+			reason = inCart ? "Already in cart; user may want to add more." : "Not in cart yet; good candidate to suggest.";
+		} else if (name.toLowerCase().contains(qLower)) {
+			reason = inCart ? "Matches search and is already in cart." : "Matches search and is not in cart.";
+		} else {
+			reason = "Catalog option (broad suggestion).";
+		}
+		return new ItemSuggestion(name, unitPrice, inCart, reason);
 	}
 
 }

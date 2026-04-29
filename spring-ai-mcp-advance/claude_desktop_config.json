@@ -1,11 +1,16 @@
 {
   "mcpServers": {
-    "shopping-cart-mcp-server": {
+    "spring-ai-mcp-advance": {
       "command": "java",
       "args": [
         "-jar",
-        "C:/Personal/Repository/SpringAI/spring-ai-mcp-shoping-cart/target/spring-ai-mcp-shoping-cart-0.0.1-SNAPSHOT.jar"
+        "C:/Personal/Repository/SpringAIWithLangChain4j/spring-ai-mcp-advance/target/spring-ai-mcp-advance-0.0.1-SNAPSHOT.jar"
       ]
     }
+  },
+  "preferences": {
+    "coworkWebSearchEnabled": true,
+    "coworkScheduledTasksEnabled": false,
+    "ccdScheduledTasksEnabled": false
   }
 }
