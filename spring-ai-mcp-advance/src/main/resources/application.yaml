@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: spring-ai-mcp-shoping-cart
+  datasource:
+    url: jdbc:postgresql://localhost:5432/postgres
+    username: postgres
+    password: password
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+  main:
+    web-application-type: none
+    banner-mode: off
+
+logging:
+  config: classpath:logback-spring.xml

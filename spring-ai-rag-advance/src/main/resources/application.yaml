@@ -1,85 +1,85 @@
 spring:
-  application:
-    name: spring-ai-rag
-  # Primary datasource for Flyway + JdbcTemplate (same DB as LangChain4j pgvector; URLs mirror app.pgvector).
-  datasource:
-    url: jdbc:postgresql://${app.pgvector.host}:${app.pgvector.port}/${app.pgvector.database}
-    username: ${app.pgvector.user}
-    password: ${app.pgvector.password}
-  jpa:
-    open-in-view: false
-    hibernate:
-      ddl-auto: validate
-    properties:
-      hibernate.jdbc.time_zone: UTC
-  flyway:
-    placeholders:
-      pgvector_table: ${app.pgvector.table}
-      pgvector_dimension: ${app.pgvector.dimension}
-      pgvector_tsv_column: ${app.pgvector.tsv-column}
-      pgvector_textsearch: ${app.pgvector.text-search-config}
-      pgvector_gin_index: ${app.pgvector.table}_${app.pgvector.tsv-column}_gin_idx
+    application:
+        name: spring-ai-rag
+    # Primary datasource for Flyway + JdbcTemplate (same DB as LangChain4j pgvector; URLs mirror app.pgvector).
+    datasource:
+        url: jdbc:postgresql://${app.pgvector.host}:${app.pgvector.port}/${app.pgvector.database}
+        username: ${app.pgvector.user}
+        password: ${app.pgvector.password}
+    jpa:
+        open-in-view: false
+        hibernate:
+            ddl-auto: validate
+        properties:
+            hibernate.jdbc.time_zone: UTC
+    flyway:
+        placeholders:
+            pgvector_table: ${app.pgvector.table}
+            pgvector_dimension: ${app.pgvector.dimension}
+            pgvector_tsv_column: ${app.pgvector.tsv-column}
+            pgvector_textsearch: ${app.pgvector.text-search-config}
+            pgvector_gin_index: ${app.pgvector.table}_${app.pgvector.tsv-column}_gin_idx
 
 # POC: minimize tokens per request (smaller prompts + shorter answers). Keep embedding dimensions
 # aligned with Flyway/DB; changing dimensions requires a new DB or migration + re-ingest.
 langchain4j:
-  open-ai:
-    chat-model:
-      api-key: ${OPENAI_API_KEY}
-      model-name: gpt-4o-mini
-      temperature: 0.0
-      max-tokens: 120
-      log-requests: false
-      log-responses: false
-    embedding-model:
-      api-key: ${OPENAI_API_KEY}
-      model-name: text-embedding-3-small
-      dimensions: 512
+    open-ai:
+        chat-model:
+            api-key: ${OPENAI_API_KEY}
+            model-name: gpt-4o-mini
+            temperature: 0.0
+            max-tokens: 120
+            log-requests: true
+            log-responses: true
+        embedding-model:
+            api-key: ${OPENAI_API_KEY}
+            model-name: text-embedding-3-small
+            dimensions: 512
 
 app:
-  rag:
-    guardrail:
-      enabled: true
-      min-rerank-score: 0.22
-      no-evidence-message: "Not found in documents"
-    retrieval:
-      # Stricter floor + fewer chunks → smaller prompts (main cost saver).
-      min-score: 0.38
-      max-results: 2
-      initial-max-results: 8
-    reranking:
-      # Extra chat calls per query — leave off for POC cost.
-      enabled: false
-      cross-encoder-max-segments-per-call: 4
-    chunking:
-      # Fewer, larger segments → fewer embedding rows on ingest (cheaper rebuilds).
-      max-segment-size-chars: 450
-      max-overlap-chars: 40
-    pipeline:
-      query-normalization-enabled: true
-      context-compression-enabled: true
-      max-injected-context-chars: 1800
-  pgvector:
-    host: localhost
-    port: 5432
-    database: RAG
-    user: postgres
-    password: password
-    table: langchain4j_embeddings
-    dimension: 512
-    text-search-config: simple
-    tsv-column: text_tsv
-    hybrid-retrieval: true
-    hybrid-vector-max-results: 3
-    hybrid-keyword-max-results: 3
+    rag:
+        guardrail:
+            enabled: true
+            min-rerank-score: 0.22
+            no-evidence-message: "Not found in documents"
+        retrieval:
+            # Stricter floor + fewer chunks → smaller prompts (main cost saver).
+            min-score: 0.38
+            max-results: 2
+            initial-max-results: 8
+        reranking:
+            # Extra chat calls per query — leave off for POC cost.
+            enabled: true
+            cross-encoder-max-segments-per-call: 4
+        chunking:
+            # Fewer, larger segments → fewer embedding rows on ingest (cheaper rebuilds).
+            max-segment-size-chars: 450
+            max-overlap-chars: 40
+        pipeline:
+            query-normalization-enabled: true
+            context-compression-enabled: true
+            max-injected-context-chars: 1800
+    pgvector:
+        host: localhost
+        port: 5432
+        database: RAG
+        user: postgres
+        password: password
+        table: langchain4j_embeddings
+        dimension: 512
+        text-search-config: simple
+        tsv-column: text_tsv
+        hybrid-retrieval: true
+        hybrid-vector-max-results: 3
+        hybrid-keyword-max-results: 3
 
-  chat:
-    safety:
-      enabled: true
-      max-query-chars: 4000
-      max-response-chars: 8000
-      extra-blocked-query-regexes: []
-      extra-blocked-response-regexes: []
-      post-llm-judge-enabled: false
-      unsafe-response-fallback: "Rejected."
-      reject-unsafe-response-with-error: true
+    chat:
+        safety:
+            enabled: true
+            max-query-chars: 4000
+            max-response-chars: 8000
+            extra-blocked-query-regexes: []
+            extra-blocked-response-regexes: []
+            post-llm-judge-enabled: true
+            unsafe-response-fallback: "Rejected."
+            reject-unsafe-response-with-error: true
